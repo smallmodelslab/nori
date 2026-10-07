@@ -1,0 +1,4 @@
+[submodule "upstream/helium-macos"]
+	path = upstream/helium-macos
+	url = https://github.com/imputnet/helium-macos.git
+	ignore = untracked

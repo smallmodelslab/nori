@@ -1,0 +1,24 @@
+# Copyright 2026 The Nori Authors
+# You can use, redistribute, and/or modify this source code under
+# the terms of the GPL-3.0 license that can be found in the LICENSE file.
+
+assert(is_mac)
+
+source_set("layout") {
+  sources = [
+    "layout/layout.cc",
+    "layout/layout.h",
+    "layout/spring.cc",
+    "layout/spring.h",
+  ]
+  public_deps = [ "//base" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "layout/layout_unittest.cc" ]
+  deps = [
+    ":layout",
+    "//testing/gtest",
+  ]
+}
