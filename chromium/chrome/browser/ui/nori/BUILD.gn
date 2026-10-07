@@ -2,23 +2,194 @@
 # You can use, redistribute, and/or modify this source code under
 # the terms of the GPL-3.0 license that can be found in the LICENSE file.
 
+import("//testing/test.gni")
+import("//tools/grit/grit_rule.gni")
+
 assert(is_mac)
 
 source_set("layout") {
   sources = [
     "layout/layout.cc",
     "layout/layout.h",
+    "layout/popup_bounds.cc",
+    "layout/popup_bounds.h",
     "layout/spring.cc",
     "layout/spring.h",
   ]
+  public_deps = [
+    "//base",
+    "//ui/gfx/geometry",
+  ]
+}
+
+source_set("commands") {
+  sources = [
+    "commands/commands.cc",
+    "commands/commands.h",
+    "commands/link_commands.cc",
+    "commands/link_commands.h",
+  ]
+  public_deps = [
+    ":layout",
+    "//base",
+    "//ui/events:events_base",
+  ]
+  deps = [
+    "//chrome/app:command_ids",
+    "//chrome/app:generated_resources",
+    "//ui/events:event_constants",
+  ]
+}
+
+source_set("config_schema") {
+  sources = [
+    "config/schema.cc",
+    "config/schema.h",
+    "config/shortcut.cc",
+    "config/shortcut.h",
+  ]
+  public_deps = [
+    ":layout",
+    "//base",
+    "//ui/events:events_base",
+  ]
+  deps = [
+    ":commands",
+    "//ui/events:event_constants",
+  ]
+}
+
+# The only target that sees toml++, which is not written to Chromium's
+# warning set.
+source_set("config_document") {
+  sources = [
+    "config/document.cc",
+    "config/document.h",
+  ]
+  configs -= [ "//build/config/compiler:chromium_code" ]
+  configs += [ "//build/config/compiler:no_chromium_code" ]
+  public_deps = [ ":config_schema" ]
+  deps = [ "//third_party/tomlplusplus" ]
+}
+
+source_set("config") {
+  sources = [
+    "config/config_store.cc",
+    "config/config_store.h",
+  ]
+  public_deps = [ ":config_document" ]
+}
+
+source_set("settings_value") {
+  sources = [
+    "settings/document_value.cc",
+    "settings/document_value.h",
+  ]
   public_deps = [ "//base" ]
+  deps = [ ":config_document" ]
+}
+
+# Plain files rather than a TypeScript build: the page is small, and keeping
+# it outside Chromium's WebUI toolchain keeps the overlay to new files.
+grit("settings_resources") {
+  source = "settings/resources/nori_settings_resources.grd"
+  inputs = [
+    "settings/resources/controls.js",
+    "settings/resources/highlight.js",
+    "settings/resources/index.html",
+    "settings/resources/settings.css",
+    "settings/resources/settings.js",
+  ]
+  output_dir = "$target_gen_dir/settings"
+  outputs = [
+    "grit/nori_settings_resources.h",
+    "grit/nori_settings_resources_map.cc",
+    "grit/nori_settings_resources_map.h",
+    "nori_settings_resources.pak",
+  ]
+}
+
+source_set("settings") {
+  sources = [
+    "settings/settings_handler.cc",
+    "settings/settings_handler.h",
+    "settings/settings_ui.cc",
+    "settings/settings_ui.h",
+  ]
+  public_deps = [ "//content/public/browser" ]
+  deps = [
+    ":config",
+    ":settings_resources",
+    ":settings_value",
+    "//ui/webui",
+  ]
+}
+
+# Also includes headers from //chrome/browser/ui itself (BrowserView, the
+# omnibox, singleton tabs and the shortcut service), which depends on this
+# target and so cannot be listed here.
+source_set("views") {
+  sources = [
+    "views/apply_keys.cc",
+    "views/apply_keys.h",
+    "views/execute_command.cc",
+    "views/execute_command.h",
+    "views/layout_controller.cc",
+    "views/layout_controller.h",
+    "views/popup.cc",
+    "views/popup.h",
+    "views/window_controller.cc",
+    "views/window_controller.h",
+  ]
+  public_deps = [
+    ":config",
+    ":layout",
+    "//chrome/browser/ui/tabs:tab_strip_model_observer",
+    "//ui/base",
+    "//ui/base/unowned_user_data",
+    "//ui/compositor",
+    "//ui/views",
+  ]
+  deps = [
+    ":commands",
+    ":settings",
+    "//chrome/app:command_ids",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/tabs:tab_strip",
+    "//components/tabs:public",
+    "//content/public/browser",
+    "//ui/compositor_extra",
+    "//ui/events:events_base",
+    "//ui/gfx/geometry",
+    "//ui/views/controls/webview",
+    "//url",
+  ]
 }
 
 source_set("unit_tests") {
   testonly = true
-  sources = [ "layout/layout_unittest.cc" ]
+  sources = [
+    "config/document_unittest.cc",
+    "config/shortcut_unittest.cc",
+    "layout/layout_unittest.cc",
+    "layout/popup_bounds_unittest.cc",
+    "settings/document_value_unittest.cc",
+  ]
   deps = [
+    ":config_document",
     ":layout",
+    ":settings_value",
     "//testing/gtest",
+    "//ui/gfx:test_support",
+  ]
+}
+
+# The same tests without the rest of Chrome's unit_tests, for quick runs:
+#   autoninja -C out/Default chrome/browser/ui/nori:nori_unittests
+test("nori_unittests") {
+  deps = [
+    ":unit_tests",
+    "//base/test:run_all_unittests",
   ]
 }

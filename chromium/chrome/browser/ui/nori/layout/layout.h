@@ -12,7 +12,8 @@
 
 // A niri-style scrolling layout. Workspaces stack vertically, each holds a
 // horizontal strip of columns, and each column stacks tabs vertically. Every
-// function takes a layout by value and returns the next one.
+// function takes a layout by value and returns the next one. The model knows
+// nothing about views, so geometry is plain pixels.
 namespace nori {
 
 using TabId = int32_t;
@@ -32,8 +33,12 @@ struct Column {
 };
 
 struct Workspace {
+  // Stable across changes, unlike the workspace's index.
+  int id = 0;
   std::vector<Column> columns;
   size_t focused = 0;
+  // How far the strip of columns is scrolled, in pixels.
+  int scroll = 0;
 
   bool operator==(const Workspace&) const = default;
 };
@@ -57,6 +62,7 @@ struct Location {
 };
 
 std::optional<Location> Find(const Layout& layout, TabId tab);
+std::optional<size_t> FindWorkspace(const Layout& layout, int id);
 std::optional<TabId> FocusedTab(const Layout& layout);
 
 // Every tab, by workspace, then column, then position in the column. The tab
@@ -75,13 +81,48 @@ Layout FocusTab(Layout layout, TabId tab);
 // Toggles the focused column between its own width and the whole window.
 Layout ToggleFullWidth(Layout layout);
 
-// The scroll offset that keeps the focused column fully in view, moving as
-// little as possible from `current`. Widths and offsets are in pixels.
-int ScrollOffset(const std::vector<int>& column_widths,
-                 int gap,
-                 size_t focused,
-                 int viewport,
-                 int current);
+struct Geometry {
+  int width = 0;
+  int height = 0;
+  // A column's width as a fraction of the window, unless it is full width.
+  double column_fraction = 0.5;
+  int gap = 0;
+
+  bool operator==(const Geometry&) const = default;
+};
+
+int ColumnWidth(const Column& column, const Geometry& geometry);
+
+// Scrolls each workspace only as far as needed to show its focused column.
+Layout ScrollIntoView(Layout layout, const Geometry& geometry);
+
+// The vertical scroll that shows the focused workspace.
+int StackScroll(const Layout& layout, const Geometry& geometry);
+
+struct Rect {
+  int x = 0;
+  int y = 0;
+  int width = 0;
+  int height = 0;
+
+  bool operator==(const Rect&) const = default;
+};
+
+struct Tile {
+  TabId tab = 0;
+  Rect bounds;
+
+  bool operator==(const Tile&) const = default;
+};
+
+// Where each tab that is at least partly in the window sits, relative to the
+// window. `focused_scroll` and `stack_scroll` are the focused workspace's
+// horizontal scroll and the vertical scroll of the workspace stack, which
+// differ from the layout's own values while they animate.
+std::vector<Tile> Tiles(const Layout& layout,
+                        const Geometry& geometry,
+                        double focused_scroll,
+                        double stack_scroll);
 
 }  // namespace nori
 

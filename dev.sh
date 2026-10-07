@@ -70,6 +70,21 @@ nori_build() {
   nori_sync && _nori_he build
 }
 
+# Builds the given ninja targets with Helium's toolchain.
+_nori_ninja() {
+  (cd "$_nori_helium" && PATH="$_nori_venv/bin:$PATH" zsh -c '
+    source ./dev.sh &&
+      cd "$_src_dir" &&
+      SISO_PATH="$_siso_path" python3 "$_depot_tools_dir/autoninja.py" \
+        -C "$_out_dir" "$@"' nori-ninja "$@")
+}
+
+nori_test() {
+  nori_sync &&
+    _nori_ninja chrome/browser/ui/nori:nori_unittests &&
+    "$_nori_out/nori_unittests" "$@"
+}
+
 nori_run() {
   "$_nori_out/Nori.app/Contents/MacOS/Nori" \
     --user-data-dir="$_nori_profile" \
@@ -86,6 +101,7 @@ nori() {
     setup) (nori_setup) ;;
     sync) nori_sync ;;
     build) nori_build ;;
+    test) nori_test "$@" ;;
     run) nori_run "$@" ;;
     patch) _nori_quilt "$@" ;;
     he) _nori_he "$@" ;;
@@ -95,6 +111,7 @@ usage: nori <command>
   setup        download Chromium, apply Helium, the overlay and nori's patches, run gn
   sync         link chromium/ into the source tree (new files only)
   build        sync, then build a development Nori.app
+  test [flags] sync, then build and run nori_unittests (gtest flags pass through)
   run [flags]  run the development build with its own profile
   patch ...    run quilt on nori's patch series (new, add, refresh, push, pop)
   he ...       run a Helium dev command (see `nori he`)

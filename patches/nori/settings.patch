@@ -1,0 +1,74 @@
+--- a/chrome/app/chrome_command_ids.h
++++ b/chrome/app/chrome_command_ids.h
+@@ -130,6 +130,7 @@
+ #define IDC_NORI_FOCUS_DOWN             34123
+ #define IDC_NORI_TOGGLE_FULL_WIDTH      34124
+ #define IDC_NORI_POPUP                  34125
++#define IDC_NORI_SETTINGS               34126
+ 
+ // Tab group Commands
+ #define IDC_ADD_NEW_TAB_TO_GROUP      34100
+--- a/chrome/browser/ui/webui/BUILD.gn
++++ b/chrome/browser/ui/webui/BUILD.gn
+@@ -110,6 +110,10 @@
+     deps += [ "//chrome/browser/ui/webui/signin:inline_login" ]
+   }
+ 
++  if (is_mac) {
++    deps += [ "//chrome/browser/ui/nori:settings" ]
++  }
++
+   if (!is_android) {
+     deps += [
+       "//chrome/browser/actor/ui:actor_overlay_web_view",
+--- a/chrome/browser/ui/webui/chrome_web_ui_configs.cc
++++ b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
+@@ -70,6 +70,10 @@
+ #include "printing/buildflags/buildflags.h"
+ #include "ui/webui/buildflags.h"
+ 
++#if BUILDFLAG(IS_MAC)
++#include "chrome/browser/ui/nori/settings/settings_ui.h"
++#endif
++
+ #if BUILDFLAG(ENABLE_WEBUI_NTP)
+ #include "chrome/browser/ui/webui/new_tab_page/new_tab_page_ui.h"
+ #endif  // BUILDFLAG(ENABLE_WEBUI_NTP)
+@@ -475,6 +479,9 @@
+   map.AddWebUIConfig(std::make_unique<DefaultBrowserModalUIConfig>());
+   map.AddWebUIConfig(std::make_unique<ManagedUserProfileNoticeUIConfig>());
+   map.AddWebUIConfig(std::make_unique<HeliumOnboardingPageConfig>());
++#if BUILDFLAG(IS_MAC)
++  map.AddWebUIConfig(std::make_unique<nori::SettingsUIConfig>());
++#endif
+   map.AddWebUIConfig(std::make_unique<ProfileCustomizationUIConfig>());
+   map.AddWebUIConfig(std::make_unique<ProfilePickerUIConfig>());
+   map.AddWebUIConfig(std::make_unique<SigninErrorUIConfig>());
+--- a/chrome/chrome_paks.gni
++++ b/chrome/chrome_paks.gni
+@@ -499,6 +499,10 @@
+         "//components/helium_onboarding:generated_resources",
+       ]
+     }
++    if (is_mac) {
++      sources += [ "$root_gen_dir/chrome/browser/ui/nori/settings/nori_settings_resources.pak" ]
++      deps += [ "//chrome/browser/ui/nori:settings_resources" ]
++    }
+ 
+     if (is_win || is_mac || is_linux || is_chromeos || is_android) {
+       sources += [ "$root_gen_dir/chrome/management_resources.pak" ]
+--- a/tools/gritsettings/resource_ids.spec
++++ b/tools/gritsettings/resource_ids.spec
+@@ -1799,6 +1799,12 @@
+     "includes": [10140],
+   },
+ 
++  # Nori.
++  "chrome/browser/ui/nori/settings/resources/nori_settings_resources.grd": {
++    "META": {"sizes": {"includes": [10]}},
++    "includes": [10240],
++  },
++
+   "<(SHARED_INTERMEDIATE_DIR)/THIS_IS_A_PLACEHOLDER.grd": {
+     "META": {"sizes": {"includes": [800]}},
+     "includes": [12000],

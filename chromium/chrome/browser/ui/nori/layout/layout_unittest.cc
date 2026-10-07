@@ -76,12 +76,60 @@ TEST(NoriLayoutTest, TogglesFullWidthOnTheFocusedColumnOnly) {
   EXPECT_FALSE(layout.workspaces[0].columns[1].full_width);
 }
 
+constexpr Geometry kWindow{.width = 1000, .height = 800};
+
+int Scroll(const Layout& layout) {
+  return layout.workspaces[layout.focused].scroll;
+}
+
+Layout FocusAndScroll(Layout layout, Direction direction) {
+  return ScrollIntoView(Focus(std::move(layout), direction), kWindow);
+}
+
 TEST(NoriLayoutTest, ScrollsOnlyAsFarAsNeededToShowTheFocusedColumn) {
-  const std::vector<int> widths = {500, 500, 500};
-  EXPECT_EQ(ScrollOffset(widths, 0, 1, 1000, 0), 0);
-  EXPECT_EQ(ScrollOffset(widths, 0, 2, 1000, 0), 500);
-  EXPECT_EQ(ScrollOffset(widths, 0, 0, 1000, 500), 0);
-  EXPECT_EQ(ScrollOffset({500, 1000}, 0, 1, 1000, 0), 500);
+  Layout layout = ScrollIntoView(Insert(TwoColumns(), 3, Placement::kRight),
+                                 kWindow);
+  EXPECT_EQ(Scroll(layout), 0);
+
+  layout = FocusAndScroll(std::move(layout), Direction::kRight);
+  EXPECT_EQ(Scroll(layout), 500);
+  layout = FocusAndScroll(std::move(layout), Direction::kLeft);
+  EXPECT_EQ(Scroll(layout), 500);
+  layout = FocusAndScroll(std::move(layout), Direction::kLeft);
+  EXPECT_EQ(Scroll(layout), 0);
+}
+
+TEST(NoriLayoutTest, AFullWidthColumnFillsTheWindow) {
+  Layout layout = Insert(TwoColumns(), 3, Placement::kRight);
+  layout = FocusAndScroll(std::move(layout), Direction::kRight);
+  layout = ScrollIntoView(ToggleFullWidth(std::move(layout)), kWindow);
+
+  EXPECT_EQ(Scroll(layout), 1000);
+  EXPECT_EQ(Tiles(layout, kWindow, Scroll(layout), 0),
+            (std::vector<Tile>{{3, {0, 0, 1000, 800}}}));
+}
+
+TEST(NoriLayoutTest, ClosingTheLastColumnDoesNotLeaveAGap) {
+  Layout layout = Insert(TwoColumns(), 3, Placement::kRight);
+  layout = FocusAndScroll(std::move(layout), Direction::kRight);
+  layout = ScrollIntoView(Remove(std::move(layout), 3), kWindow);
+  EXPECT_EQ(Scroll(layout), 0);
+}
+
+TEST(NoriLayoutTest, TilesSplitAColumnAndFollowTheWorkspaceStack) {
+  Layout layout = Insert(TwoColumns(), 3, Placement::kBelow);
+  EXPECT_EQ(Tiles(layout, kWindow, 0, 0),
+            (std::vector<Tile>{{1, {0, 0, 500, 800}},
+                               {2, {500, 0, 500, 400}},
+                               {3, {500, 400, 500, 400}}}));
+
+  layout = Focus(Focus(std::move(layout), Direction::kDown), Direction::kDown);
+  ASSERT_EQ(StackScroll(layout, kWindow), 800);
+  EXPECT_EQ(Tiles(layout, kWindow, 0, 400),
+            (std::vector<Tile>{{1, {0, -400, 500, 800}},
+                               {2, {500, -400, 500, 400}},
+                               {3, {500, 0, 500, 400}}}));
+  EXPECT_TRUE(Tiles(layout, kWindow, 0, 800).empty());
 }
 
 }  // namespace

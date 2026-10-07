@@ -1,0 +1,166 @@
+--- a/chrome/browser/ui/tabs/tab_strip_prefs.cc
++++ b/chrome/browser/ui/tabs/tab_strip_prefs.cc
+@@ -29,8 +29,10 @@
+   registry->RegisterIntegerPref(prefs::kVerticalTabsUncollapsedWidth,
+                                 kVerticalTabStripDefaultUncollapsedWidth);
+ 
++  // Nori: the vertical layout leaves only the toolbar in the top container,
++  // which becomes the Ctrl+B popup. Its tab strip is never revealed.
+   registry->RegisterIntegerPref(prefs::kHeliumLayout,
+-                                std::to_underlying(HeliumLayoutType::kClassic));
++                                std::to_underlying(HeliumLayoutType::kVertical));
+   registry->RegisterBooleanPref(prefs::kHeliumVerticalRightAligned, false);
+   registry->RegisterBooleanPref(prefs::kHeliumZenMode, false);
+   registry->RegisterBooleanPref(prefs::kHeliumZenModeSidebarPinned, false);
+--- a/chrome/browser/ui/views/frame/browser_view.cc
++++ b/chrome/browser/ui/views/frame/browser_view.cc
+@@ -1057,7 +1057,10 @@
+       this, std::make_unique<MultiContentsViewDelegateImpl>(*browser_));
+   multi_contents_view_ = AddChildView(std::move(multi_contents_view));
+   nori_ = std::make_unique<nori::WindowController>(
+-      browser_.get(), multi_contents_view_);
++      browser_.get(), multi_contents_view_, top_container_);
++  // The top container is nori's popup, which floats over the page.
++  ReorderChildView(top_container_, GetIndexOf(multi_contents_view_).value());
++  top_container_insertion_index_ = GetIndexOf(top_container_.get());
+ 
+   set_contents_view(multi_contents_view_);
+ 
+@@ -1914,6 +1917,9 @@
+     }
+ 
+     UpdateZenModeReveal(/*reveal_top=*/false, /*reveal_side=*/false);
++    if (nori_) {
++      nori_->popup().SetRevealRatio(GetTopChromeRevealRatio());
++    }
+   }
+ 
+   MaybeExpandVerticalTabStripForZenMode();
+@@ -1983,6 +1989,14 @@
+     return;
+   }
+ 
++  // Nori's top chrome is the Ctrl+B popup, which follows focus rather than
++  // the cursor.
++  if (nori_) {
++    zen_cursor_exit_timer_.Stop();
++    UpdateZenModeReveal(/*reveal_top=*/false, /*reveal_side=*/false);
++    return;
++  }
++
+   gfx::Point cursor;
+   // When the cursor leaves the window, start a timer before collapsing.
+   // Brief cursor excursions outside the window shouldn't collapse
+@@ -2050,6 +2064,12 @@
+     reveal_top = true;
+   }
+ 
++  // Nori's popup stays open while anything in it has focus.
++  if (nori_ && top_container_ && GetFocusManager() &&
++      top_container_->Contains(GetFocusManager()->GetFocusedView())) {
++    reveal_top = true;
++  }
++
+   // Keep the top chrome visible while a bubble/popup anchored inside the top
+   // container or a side panel is open.
+   if (!reveal_top && HasOpenBubbleFromTopContainer()) {
+@@ -2090,6 +2110,9 @@
+ 
+ void BrowserView::RevealZenModeTopChromeImmediately() {
+   zen_top_chrome_animation_.Reset(1);
++  if (nori_) {
++    nori_->popup().SetRevealRatio(1);
++  }
+   if (vertical_tab_strip_region_view_) {
+     vertical_tab_strip_region_view_->UpdateInteriorMargin();
+   }
+@@ -3022,11 +3045,10 @@
+     return;
+   }
+ 
+-  // In zen mode, snap the toolbar to fully shown so the omnibox is visible
+-  // and can receive focus.  A synchronous layout is required so the toolbar
+-  // has non-zero height before FocusLocation runs.
++  // Nori's hidden popup keeps its full size above the window, so the omnibox
++  // can take focus while the popup animates in.
+   if (zen_mode_enabled_) {
+-    RevealZenModeTopChromeImmediately();
++    UpdateZenModeReveal(/*reveal_top=*/true, /*reveal_side=*/false);
+   }
+ 
+   LocationBar* location_bar = GetLocationBar();
+@@ -6873,6 +6895,9 @@
+     if (top_chrome_animation && multi_contents_view_) {
+       multi_contents_view_->MaybeUpdateBorderForZenReveal();
+     }
++    if (top_chrome_animation && nori_) {
++      nori_->popup().SetRevealRatio(GetTopChromeRevealRatio());
++    }
+     InvalidateLayout();
+     if (top_chrome_animation) {
+       if (auto* frame_view = GetFrameView()) {
+--- a/chrome/browser/ui/views/frame/layout/browser_view_tabbed_layout_impl.cc
++++ b/chrome/browser/ui/views/frame/layout/browser_view_tabbed_layout_impl.cc
+@@ -24,6 +24,7 @@
+ #include "chrome/browser/ui/helium/helium_layout_state_controller.h"
+ #include "chrome/browser/ui/immersive/immersive_mode_controller.h"
+ #include "chrome/browser/ui/layout_constants.h"
++#include "chrome/browser/ui/nori/layout/popup_bounds.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/ui_features.h"
+ #include "chrome/browser/ui/views/animations/side_panel_animations.h"
+@@ -1098,11 +1099,12 @@
+       }
+     }
+ 
+-    params.SetTop(top_container_layout.bounds.bottom());
+-
+     if (zen.enabled) {
+-      AdjustTopContainerForZenMode(top_container_layout, params,
+-                                   zen.top_chrome_ratio);
++      FloatTopContainerForNori(top_container_layout,
++                               browser_params.visual_client_area,
++                               zen.top_chrome_ratio);
++    } else {
++      params.SetTop(top_container_layout.bounds.bottom());
+     }
+ 
+     // The floating VTS offset only accounts for toolbar height, but the
+@@ -1645,6 +1647,21 @@
+ #endif  // BUILDFLAG(IS_LINUX)
+ }
+ 
++void BrowserViewTabbedLayoutImpl::FloatTopContainerForNori(
++    ProposedLayout& top_container_layout,
++    const gfx::Rect& area,
++    float top_chrome_ratio) const {
++  top_container_layout.bounds = nori::PopupBounds(
++      area, views().toolbar->GetPreferredSize().height(), top_chrome_ratio);
++  for (auto& [child, child_layout] : top_container_layout.children) {
++    const bool is_toolbar = child == views().toolbar;
++    child_layout.bounds = is_toolbar
++                              ? gfx::Rect(top_container_layout.bounds.size())
++                              : gfx::Rect();
++    child_layout.visibility = is_toolbar;
++  }
++}
++
+ void BrowserViewTabbedLayoutImpl::ConfigureTopContainerBackground(
+     const BrowserLayoutParams& params,
+     CustomCornersBackground* background) {
+--- a/chrome/browser/ui/views/frame/layout/browser_view_tabbed_layout_impl.h
++++ b/chrome/browser/ui/views/frame/layout/browser_view_tabbed_layout_impl.h
+@@ -55,6 +55,13 @@
+                                     BrowserLayoutParams& params,
+                                     float top_chrome_ratio) const;
+ 
++  // Nori shows revealed top chrome as the Ctrl+B popup, floating over the
++  // middle of `area` rather than pushing the page down. Only the toolbar is
++  // shown in it.
++  void FloatTopContainerForNori(ProposedLayout& top_container_layout,
++                                const gfx::Rect& area,
++                                float top_chrome_ratio) const;
++
+   struct HorizontalLayout;
+   struct SeparatorInfo;
+   struct SidePanelContentAnimation;
