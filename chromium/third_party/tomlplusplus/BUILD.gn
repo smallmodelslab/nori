@@ -1,0 +1,19 @@
+# Copyright 2026 The Nori Authors
+# You can use, redistribute, and/or modify this source code under
+# the terms of the GPL-3.0 license that can be found in the LICENSE file.
+
+config("tomlplusplus_config") {
+  defines = [
+    "TOML_EXCEPTIONS=0",
+    "TOML_HEADER_ONLY=1",
+    "TOML_ENABLE_FORMATTERS=0",
+  ]
+  cflags = [ "-Wno-deprecated-literal-operator" ]
+}
+
+# Header-only. Include it from as few translation units as possible, and build
+# those with the third-party warning set (see //chrome/browser/ui/nori:config).
+source_set("tomlplusplus") {
+  public = [ "toml.hpp" ]
+  public_configs = [ ":tomlplusplus_config" ]
+}

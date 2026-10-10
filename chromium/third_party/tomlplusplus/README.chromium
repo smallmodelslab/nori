@@ -1,0 +1,15 @@
+Name: toml++
+Short Name: tomlplusplus
+URL: https://github.com/marzer/tomlplusplus
+Version: 3.4.0
+Revision: v3.4.0
+License: MIT
+License File: LICENSE
+Security Critical: no
+Shipped: yes
+
+Description:
+Header-only TOML parser for C++17. Nori uses it to read config.toml.
+
+Local Modifications:
+None. toml.hpp is the single-header release, unchanged.

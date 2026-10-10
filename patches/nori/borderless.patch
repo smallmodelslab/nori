@@ -1,0 +1,51 @@
+--- a/chrome/browser/ui/browser_ui_prefs.cc
++++ b/chrome/browser/ui/browser_ui_prefs.cc
+@@ -133,7 +133,7 @@
+ 
+   registry->RegisterBooleanPref(prefs::kShowZoomIndicator, true);
+ 
+-  registry->RegisterBooleanPref(prefs::kHeliumRoundedFrame, true);
++  registry->RegisterBooleanPref(prefs::kHeliumRoundedFrame, false);
+ 
+   registry->RegisterBooleanPref(prefs::kHeliumNativeFrameMaterials, false);
+ 
+--- a/chrome/browser/ui/helium/helium_layout_state_controller.cc
++++ b/chrome/browser/ui/helium/helium_layout_state_controller.cc
+@@ -52,7 +52,8 @@
+ }
+ 
+ bool HeliumLayoutStateController::IsZenModeEnabled() const {
+-  return pref_service_->GetBoolean(prefs::kHeliumZenMode);
++  // Nori has no browser chrome: pages always fill the window.
++  return true;
+ }
+ 
+ void HeliumLayoutStateController::SetBrowserLayout(HeliumLayoutType layout) {
+--- a/chrome/browser/ui/views/frame/browser_view.cc
++++ b/chrome/browser/ui/views/frame/browser_view.cc
+@@ -2115,21 +2115,14 @@
+   }
+ }
+ 
++// Nori never reveals browser chrome from the window edges; the Ctrl+B popup
++// replaces it.
+ bool BrowserView::IsPointInZenTopTrigger(const gfx::Point& point) const {
+-  return point.y() >= 0 && point.y() < kZenModeRevealTriggerThickness;
++  return false;
+ }
+ 
+ bool BrowserView::IsPointInZenSideTrigger(const gfx::Point& point) const {
+-  if (!ShouldDrawVerticalTabStrip()) {
+-    return false;
+-  }
+-  auto* controller = tabs::VerticalTabStripStateController::From(browser_);
+-  const bool right_aligned = controller && controller->IsTabStripRightAligned();
+-  if (right_aligned) {
+-    return point.x() >= width() - kZenModeRevealTriggerThickness &&
+-           point.x() < width();
+-  }
+-  return point.x() >= 0 && point.x() < kZenModeRevealTriggerThickness;
++  return false;
+ }
+ 
+ namespace {

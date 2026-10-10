@@ -1,0 +1,253 @@
+/* Copyright 2026 The Nori Authors
+ * You can use, redistribute, and/or modify this source code under
+ * the terms of the GPL-3.0 license that can be found in the LICENSE file. */
+
+/* Every row on the left is one line of the file on the right, so both share
+ * --line. settings.js reads it to place the controls. */
+:root {
+  --line: 24px;
+  --pad: 16px;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --bg: light-dark(#fbfaf8, #17171a);
+  --panel: light-dark(#ffffff, #1e1e22);
+  --fg: light-dark(#1d1d20, #e6e4df);
+  --muted: light-dark(#8a8780, #77757f);
+  --rule: light-dark(#ecebe7, #2a2a2f);
+  --accent: light-dark(#3d6df2, #7c9cff);
+  --error: light-dark(#d4372c, #ff6b5f);
+  --error-bg: light-dark(#fdecea, #3a1f1e);
+  --current: light-dark(#f2f1ec, #232328);
+
+  --tok-comment: var(--muted);
+  --tok-table: light-dark(#8b3fd9, #c29bff);
+  --tok-key: light-dark(#1a5fb4, #8fb8ff);
+  --tok-string: light-dark(#2f7d32, #9bd38e);
+  --tok-number: light-dark(#b45309, #f5b26b);
+  --tok-bool: light-dark(#b45309, #f5b26b);
+  --tok-punct: var(--muted);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 system-ui, sans-serif;
+}
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 18px 24px 14px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--rule);
+}
+
+h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+#file {
+  color: var(--muted);
+  font: 12px var(--mono);
+}
+
+#status {
+  margin-inline-start: auto;
+  color: var(--muted);
+  transition: opacity 300ms ease;
+}
+
+#status:empty {
+  opacity: 0;
+}
+
+#banner {
+  margin: 12px 24px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--error-bg);
+  color: var(--error);
+  font-family: var(--mono);
+}
+
+main {
+  display: grid;
+  grid-template-columns: minmax(300px, 2fr) 3fr;
+  gap: 24px;
+  padding: 16px 24px 48px;
+}
+
+/* Controls. */
+
+/* Level with the first line: the editor's border plus its padding. */
+#controls {
+  position: relative;
+  margin-top: calc(var(--pad) + 1px);
+}
+
+.row {
+  position: absolute;
+  inset-inline: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--line);
+  padding-inline: 8px;
+  border-radius: 6px;
+  transition: top 160ms ease, background-color 120ms ease;
+}
+
+.row.current {
+  background: var(--current);
+}
+
+.row label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.row .path {
+  color: var(--muted);
+  font: 12px var(--mono);
+}
+
+.row.invalid label {
+  color: var(--error);
+}
+
+.row.unknown label {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.control output {
+  min-width: 4ch;
+  color: var(--muted);
+  font: 12px var(--mono);
+  text-align: end;
+}
+
+input[type=range] {
+  width: 140px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+select,
+button.shortcut {
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--panel);
+  color: inherit;
+  font: 12px var(--mono);
+}
+
+button.shortcut {
+  min-width: 96px;
+  cursor: pointer;
+}
+
+button.shortcut.recording {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Editor: a transparent textarea over its own highlighted copy, both sized by
+ * the copy so that the page, not the textarea, does the scrolling. */
+
+#editor {
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+#stack {
+  position: relative;
+  min-width: 100%;
+  width: max-content;
+}
+
+#highlight,
+#text {
+  margin: 0;
+  padding: var(--pad);
+  border: 0;
+  font: 13px/var(--line) var(--mono);
+  tab-size: 2;
+  white-space: pre;
+  letter-spacing: normal;
+}
+
+#highlight {
+  min-height: calc(var(--line) * 8);
+}
+
+#text {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  resize: none;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--fg);
+}
+
+#text::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.line {
+  min-height: var(--line);
+  margin-inline: calc(-1 * var(--pad));
+  padding-inline: var(--pad);
+}
+
+.line.current {
+  background: var(--current);
+}
+
+.line.invalid {
+  background: var(--error-bg);
+}
+
+.tok-comment { color: var(--tok-comment); font-style: italic; }
+.tok-table { color: var(--tok-table); font-weight: 600; }
+.tok-key { color: var(--tok-key); }
+.tok-string { color: var(--tok-string); }
+.tok-number { color: var(--tok-number); }
+.tok-bool { color: var(--tok-bool); }
+.tok-punct { color: var(--tok-punct); }
+
+@media (prefers-reduced-motion: reduce) {
+  .row {
+    transition: none;
+  }
+}

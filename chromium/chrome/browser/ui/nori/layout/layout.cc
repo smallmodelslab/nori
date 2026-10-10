@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/nori/layout/layout.h"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace nori {
@@ -25,6 +26,8 @@ Layout Normalize(Layout layout) {
   for (size_t w = 0; w < layout.workspaces.size(); ++w) {
     Workspace& workspace = layout.workspaces[w];
     Workspace kept;
+    kept.id = workspace.id;
+    kept.scroll = workspace.scroll;
     for (size_t c = 0; c < workspace.columns.size(); ++c) {
       Column& column = workspace.columns[c];
       if (column.tabs.empty()) {
@@ -52,13 +55,41 @@ Layout Normalize(Layout layout) {
   }
 
   if (!IsEmpty(result.workspaces.back())) {
-    result.workspaces.emplace_back();
+    Workspace trailing;
+    for (const Workspace& workspace : layout.workspaces) {
+      trailing.id = std::max(trailing.id, workspace.id + 1);
+    }
+    result.workspaces.push_back(std::move(trailing));
   }
   return result;
 }
 
 Column& FocusedColumn(Workspace& workspace) {
   return workspace.columns[workspace.focused];
+}
+
+// Moves `scroll` as little as possible to show the focused column, without
+// scrolling past the last column.
+int ScrollToShow(const Workspace& workspace,
+                 const Geometry& geometry,
+                 int scroll) {
+  int left = 0;
+  int right = 0;
+  int total = 0;
+  for (size_t c = 0; c < workspace.columns.size(); ++c) {
+    const int width = ColumnWidth(workspace.columns[c], geometry);
+    if (c == workspace.focused) {
+      left = total;
+      right = total + width;
+    }
+    total += width + (c + 1 < workspace.columns.size() ? geometry.gap : 0);
+  }
+  if (right - left >= geometry.width || left < scroll) {
+    scroll = left;
+  } else if (right > scroll + geometry.width) {
+    scroll = right - geometry.width;
+  }
+  return std::clamp(scroll, 0, std::max(0, total - geometry.width));
 }
 
 }  // namespace
@@ -75,6 +106,14 @@ std::optional<Location> Find(const Layout& layout, TabId tab) {
     }
   }
   return std::nullopt;
+}
+
+std::optional<size_t> FindWorkspace(const Layout& layout, int id) {
+  auto it = std::ranges::find(layout.workspaces, id, &Workspace::id);
+  if (it == layout.workspaces.end()) {
+    return std::nullopt;
+  }
+  return static_cast<size_t>(it - layout.workspaces.begin());
 }
 
 std::optional<TabId> FocusedTab(const Layout& layout) {
@@ -190,26 +229,54 @@ Layout ToggleFullWidth(Layout layout) {
   return layout;
 }
 
-int ScrollOffset(const std::vector<int>& column_widths,
-                 int gap,
-                 size_t focused,
-                 int viewport,
-                 int current) {
-  if (focused >= column_widths.size()) {
-    return 0;
+int ColumnWidth(const Column& column, const Geometry& geometry) {
+  if (column.full_width) {
+    return geometry.width;
   }
-  int left = 0;
-  for (size_t c = 0; c < focused; ++c) {
-    left += column_widths[c] + gap;
+  return static_cast<int>(std::lround(geometry.width * geometry.column_fraction));
+}
+
+Layout ScrollIntoView(Layout layout, const Geometry& geometry) {
+  for (Workspace& workspace : layout.workspaces) {
+    workspace.scroll = ScrollToShow(workspace, geometry, workspace.scroll);
   }
-  const int right = left + column_widths[focused];
-  if (right - left >= viewport || left < current) {
-    return left;
+  return layout;
+}
+
+int StackScroll(const Layout& layout, const Geometry& geometry) {
+  return static_cast<int>(layout.focused) * geometry.height;
+}
+
+std::vector<Tile> Tiles(const Layout& layout,
+                        const Geometry& geometry,
+                        double focused_scroll,
+                        double stack_scroll) {
+  std::vector<Tile> tiles;
+  const int stack = static_cast<int>(std::lround(stack_scroll));
+  for (size_t w = 0; w < layout.workspaces.size(); ++w) {
+    const Workspace& workspace = layout.workspaces[w];
+    const int top = static_cast<int>(w) * geometry.height - stack;
+    if (top >= geometry.height || top + geometry.height <= 0) {
+      continue;
+    }
+    const int scroll = w == layout.focused
+                           ? static_cast<int>(std::lround(focused_scroll))
+                           : workspace.scroll;
+    int left = -scroll;
+    for (const Column& column : workspace.columns) {
+      const int width = ColumnWidth(column, geometry);
+      if (left < geometry.width && left + width > 0) {
+        const int count = static_cast<int>(column.tabs.size());
+        for (int i = 0; i < count; ++i) {
+          const int y = top + i * geometry.height / count;
+          const int bottom = top + (i + 1) * geometry.height / count;
+          tiles.push_back({column.tabs[i], {left, y, width, bottom - y}});
+        }
+      }
+      left += width + geometry.gap;
+    }
   }
-  if (right > current + viewport) {
-    return right - viewport;
-  }
-  return current;
+  return tiles;
 }
 
 }  // namespace nori

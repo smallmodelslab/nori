@@ -52,4 +52,35 @@ bool Spring::IsDoneAt(base::TimeDelta elapsed) const {
          std::abs(VelocityAt(elapsed)) < params_.epsilon * 60;
 }
 
+void Motion::AnimateTo(double target, base::TimeTicks now, SpringParams params) {
+  if (target == target_) {
+    return;
+  }
+  const double velocity =
+      IsAnimatingAt(now) ? spring_->VelocityAt(now - start_) : 0;
+  spring_.emplace(ValueAt(now), target, velocity, params);
+  start_ = now;
+  target_ = target;
+}
+
+void Motion::JumpTo(double value) {
+  spring_.reset();
+  target_ = value;
+}
+
+void Motion::Shift(double delta) {
+  target_ += delta;
+  if (spring_) {
+    spring_->Shift(delta);
+  }
+}
+
+double Motion::ValueAt(base::TimeTicks now) const {
+  return IsAnimatingAt(now) ? spring_->ValueAt(now - start_) : target_;
+}
+
+bool Motion::IsAnimatingAt(base::TimeTicks now) const {
+  return spring_ && !spring_->IsDoneAt(now - start_);
+}
+
 }  // namespace nori

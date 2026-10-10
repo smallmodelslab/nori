@@ -5,6 +5,8 @@
 #ifndef CHROME_BROWSER_UI_NORI_LAYOUT_SPRING_H_
 #define CHROME_BROWSER_UI_NORI_LAYOUT_SPRING_H_
 
+#include <optional>
+
 #include "base/time/time.h"
 
 namespace nori {
@@ -14,6 +16,8 @@ struct SpringParams {
   double damping_ratio = 1;
   // Pixels from the target below which the motion is finished.
   double epsilon = 0.25;
+
+  bool operator==(const SpringParams&) const = default;
 };
 
 // A damped spring with unit mass, solved in closed form, as in niri.
@@ -25,6 +29,9 @@ class Spring {
   // Pixels per second.
   double VelocityAt(base::TimeDelta elapsed) const;
   bool IsDoneAt(base::TimeDelta elapsed) const;
+
+  // Moves the whole motion, start and target, by `delta`.
+  void Shift(double delta) { to_ += delta; }
 
   double to() const { return to_; }
 
@@ -38,6 +45,28 @@ class Spring {
   double beta_;
   double omega0_;
   SpringParams params_;
+};
+
+// A value that springs to each new target, carrying its velocity over when
+// the target changes mid-flight.
+class Motion {
+ public:
+  explicit Motion(double value = 0) : target_(value) {}
+
+  void AnimateTo(double target, base::TimeTicks now, SpringParams params);
+  void JumpTo(double value);
+  // Moves the value and its target by `delta`, for when the coordinate space
+  // itself shifts under the motion.
+  void Shift(double delta);
+
+  double ValueAt(base::TimeTicks now) const;
+  bool IsAnimatingAt(base::TimeTicks now) const;
+  double target() const { return target_; }
+
+ private:
+  double target_;
+  std::optional<Spring> spring_;
+  base::TimeTicks start_;
 };
 
 }  // namespace nori

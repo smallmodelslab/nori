@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Copyright 2026 The Nori Authors
+You can use, redistribute, and/or modify this source code under
+the terms of the GPL-3.0 license that can be found in the LICENSE file.
+-->
+<grit latest_public_release="0" current_release="1">
+  <outputs>
+    <output filename="grit/nori_settings_resources.h" type="rc_header">
+      <emit emit_type="prepend"></emit>
+    </output>
+    <output filename="grit/nori_settings_resources_map.cc" type="resource_file_map_source" />
+    <output filename="grit/nori_settings_resources_map.h" type="resource_map_header" />
+    <output filename="nori_settings_resources.pak" type="data_package" />
+  </outputs>
+  <release seq="1">
+    <includes>
+      <include name="IDR_NORI_SETTINGS_INDEX_HTML" file="index.html" type="BINDATA" resource_path="index.html" />
+      <include name="IDR_NORI_SETTINGS_SETTINGS_CSS" file="settings.css" type="BINDATA" resource_path="settings.css" />
+      <include name="IDR_NORI_SETTINGS_SETTINGS_JS" file="settings.js" type="BINDATA" resource_path="settings.js" />
+      <include name="IDR_NORI_SETTINGS_CONTROLS_JS" file="controls.js" type="BINDATA" resource_path="controls.js" />
+      <include name="IDR_NORI_SETTINGS_HIGHLIGHT_JS" file="highlight.js" type="BINDATA" resource_path="highlight.js" />
+    </includes>
+  </release>
+</grit>

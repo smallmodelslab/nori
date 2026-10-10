@@ -1,0 +1,107 @@
+--- a/chrome/app/chrome_command_ids.h
++++ b/chrome/app/chrome_command_ids.h
+@@ -417,6 +417,10 @@
+ // Listen to this page context menu.
+ #define IDC_CONTENT_CONTEXT_LISTEN_TO_THIS_PAGE 50195
+ #define IDC_CONTENT_CONTEXT_SYSTEM_TRANSLATE 50196
++// Nori link items.
++#define IDC_CONTENT_CONTEXT_NORI_OPENLINK_RIGHT 50197
++#define IDC_CONTENT_CONTEXT_NORI_OPENLINK_BELOW 50198
++#define IDC_CONTENT_CONTEXT_NORI_OPENLINK_ABOVE 50199
+ // Open with items.
+ #define IDC_CONTENT_CONTEXT_OPEN_WITH1 50200
+ // Context menu items that provide fast access to input methods.
+--- a/chrome/browser/renderer_context_menu/BUILD.gn
++++ b/chrome/browser/renderer_context_menu/BUILD.gn
+@@ -154,6 +154,8 @@
+       "//chrome/browser/ui/autofill",
+       "//chrome/browser/ui/browser_window",
+       "//chrome/browser/ui/lens",
++      "//chrome/browser/ui/nori:commands",
++      "//chrome/browser/ui/nori:views",
+       "//chrome/browser/ui/profiles",
+       "//chrome/browser/ui/qrcode_generator",
+       "//chrome/browser/ui/send_tab_to_self",
+--- a/chrome/browser/renderer_context_menu/render_view_context_menu.cc
++++ b/chrome/browser/renderer_context_menu/render_view_context_menu.cc
+@@ -121,6 +121,8 @@
+ #include "chrome/browser/ui/lens/lens_string_utils.h"
+ #include "chrome/browser/ui/navigator/browser_navigator.h"
+ #include "chrome/browser/ui/navigator/browser_navigator_params.h"
++#include "chrome/browser/ui/nori/commands/link_commands.h"
++#include "chrome/browser/ui/nori/views/layout_controller.h"
+ #include "chrome/browser/ui/passwords/ui_utils.h"
+ #include "chrome/browser/ui/profiles/profile_colors_util.h"
+ #include "chrome/browser/ui/profiles/profile_view_utils.h"
+@@ -738,6 +740,10 @@
+   DCHECK(!RenderViewContextMenu::IsContentCustomCommandId(id));
+   DCHECK(!ContextMenuMatcher::IsExtensionsCustomCommandId(id));
+ 
++  if (nori::FindLinkCommand(id)) {
++    return IDC_CONTENT_CONTEXT_OPENLINKNEWTAB;
++  }
++
+   if (id >= IDC_CONTENT_CONTEXT_PROTOCOL_HANDLER_FIRST &&
+       id <= IDC_CONTENT_CONTEXT_PROTOCOL_HANDLER_LAST) {
+     return IDC_CONTENT_CONTEXT_PROTOCOL_HANDLER_FIRST;
+@@ -777,7 +783,8 @@
+ 
+ // Returns true if the command id is for opening a link.
+ bool IsCommandForOpenLink(int id) {
+-  return id == IDC_CONTENT_CONTEXT_OPENLINKNEWTAB ||
++  return nori::FindLinkCommand(id) ||
++         id == IDC_CONTENT_CONTEXT_OPENLINKNEWTAB ||
+          id == IDC_CONTENT_CONTEXT_OPENLINKNEWWINDOW ||
+          id == IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD ||
+          id == IDC_CONTENT_CONTEXT_OPENLINK_ISOLATED ||
+@@ -1956,7 +1963,11 @@
+       show_open_link_off_the_record = false;
+     }
+ 
+-    if (show_open_in_new_tab) {
++    if (show_open_in_new_tab && IsNormalBrowser()) {
++      for (const nori::LinkCommand& command : nori::LinkCommands()) {
++        menu_model_.AddItemWithStringId(command.id, command.label_id);
++      }
++    } else if (show_open_in_new_tab) {
+       menu_model_.AddItemWithStringId(
+           IDC_CONTENT_CONTEXT_OPENLINKNEWTAB,
+           in_app ? IDS_CONTENT_CONTEXT_OPENLINKNEWTAB_INAPP
+@@ -3274,6 +3285,10 @@
+ // Menu delegate functions -----------------------------------------------------
+ 
+ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
++  if (nori::FindLinkCommand(id)) {
++    id = IDC_CONTENT_CONTEXT_OPENLINKNEWTAB;
++  }
++
+ #if BUILDFLAG(IS_CHROMEOS)
+   // Disable context menu in locked fullscreen mode to prevent users from
+   // exiting this mode (the menu is not really disabled as the user can still
+@@ -3726,6 +3741,26 @@
+     return;
+   }
+ 
++  if (const nori::LinkCommand* command = nori::FindLinkCommand(id)) {
++    const auto open = [this] {
++      source_web_contents_->OpenURL(
++          GetOpenURLParamsWithExtraHeaders(
++              params_.link_url, params_.frame_url, params_.frame_origin,
++              WindowOpenDisposition::NEW_BACKGROUND_TAB,
++              ui::PAGE_TRANSITION_LINK, /*extra_headers=*/std::string(),
++              /*started_from_context_menu=*/true),
++          /*navigation_handle_callback=*/{});
++    };
++    BrowserWindowInterface* browser = GetBrowser();
++    if (nori::LayoutController* layout =
++            browser ? nori::LayoutController::From(browser) : nullptr) {
++      layout->OpenWithPlacement(command->placement, open);
++    } else {
++      open();
++    }
++    return;
++  }
++
+   switch (id) {
+     case IDC_CONTENT_CONTEXT_OPENLINKNEWTAB: {
+       WindowOpenDisposition new_tab_disposition =

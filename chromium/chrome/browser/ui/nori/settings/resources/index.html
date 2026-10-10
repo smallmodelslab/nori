@@ -1,0 +1,33 @@
+<!doctype html>
+<!--
+Copyright 2026 The Nori Authors
+You can use, redistribute, and/or modify this source code under
+the terms of the GPL-3.0 license that can be found in the LICENSE file.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="light dark">
+  <title>Nori settings</title>
+  <link rel="stylesheet" href="settings.css">
+  <script type="module" src="settings.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Settings</h1>
+    <code id="file"></code>
+    <span id="status" role="status"></span>
+  </header>
+  <div id="banner" role="alert" hidden></div>
+  <main>
+    <section id="controls" aria-label="Settings"></section>
+    <section id="editor" aria-label="config.toml">
+      <div id="stack">
+        <pre id="highlight" aria-hidden="true"></pre>
+        <textarea id="text" spellcheck="false" wrap="off" autocomplete="off"
+            autocapitalize="off" aria-label="config.toml"></textarea>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
