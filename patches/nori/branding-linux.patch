@@ -9,7 +9,7 @@
    }
  
    executable("chrome_initial") {
-@@ -1873,13 +1873,13 @@
+@@ -1873,19 +1873,19 @@
        ]
      }
      extract_symbols("chrome_symbols") {
@@ -26,6 +26,13 @@
        }
  
        deps = [ ":chrome" ]
+     }
+     extract_symbols("chrome_crashpad_symbols") {
+-      binary = "$root_out_dir/helium_crashpad_handler"
++      binary = "$root_out_dir/nori_crashpad_handler"
+ 
+       if (current_cpu == "x86") {
+         # GYP used "ia32" so keep that naming for back-compat.
 --- a/chrome/browser/memory_details_linux.cc
 +++ b/chrome/browser/memory_details_linux.cc
 @@ -118,7 +118,7 @@
@@ -95,3 +102,42 @@
  
      // When --use-cros-crash-reporter is set (below), the handler passes dumps
      // to ChromeOS's /sbin/crash_reporter which in turn passes the dump to
+--- a/chrome/browser/shell_integration_linux.cc
++++ b/chrome/browser/shell_integration_linux.cc
+@@ -485,7 +485,7 @@
+ }
+ 
+ std::string GetIconName() {
+-  return "helium";
++  return "nori";
+ }
+ 
+ bool GetExistingShortcutContents(base::Environment* env,
+--- a/chrome/installer/linux/BUILD.gn
++++ b/chrome/installer/linux/BUILD.gn
+@@ -71,8 +71,8 @@
+ }
+ 
+ packaging_files_executables = [
+-  "$root_out_dir/helium",
+-  "$root_out_dir/helium_crashpad_handler",
++  "$root_out_dir/nori",
++  "$root_out_dir/nori_crashpad_handler",
+ ]
+ 
+ packaging_files_shlibs = []
+@@ -208,12 +208,12 @@
+ }
+ 
+ strip_binary("strip_chrome_binary") {
+-  binary_input = "$root_out_dir/helium"
++  binary_input = "$root_out_dir/nori"
+   deps = [ "//chrome" ]
+ }
+ 
+ strip_binary("strip_chrome_crashpad_handler") {
+-  binary_input = "$root_out_dir/helium_crashpad_handler"
++  binary_input = "$root_out_dir/nori_crashpad_handler"
+   deps = [ "//components/crash/core/app:chrome_crashpad_handler" ]
+ }
+ 
