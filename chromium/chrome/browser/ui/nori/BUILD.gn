@@ -5,7 +5,7 @@
 import("//testing/test.gni")
 import("//tools/grit/grit_rule.gni")
 
-assert(is_mac)
+assert(is_mac || is_linux)
 
 source_set("layout") {
   sources = [

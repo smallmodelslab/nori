@@ -1,0 +1,29 @@
+name: Build Linux
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A build left half done keeps the next one from being incremental.
+concurrency:
+  group: build-linux
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # The dedicated builder keeps the Chromium tree in /srv/nori between builds.
+    # Its runner group admits only this workflow on main, never a fork's.
+    runs-on: [self-hosted, nori-linux]
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Build
+        env:
+          NORI_BUILD_DIR: /srv/nori/build
+        run: devutils/build-linux.sh

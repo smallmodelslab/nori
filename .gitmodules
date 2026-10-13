@@ -2,3 +2,7 @@
 	path = upstream/helium-macos
 	url = https://github.com/imputnet/helium-macos.git
 	ignore = untracked
+[submodule "upstream/helium-linux"]
+	path = upstream/helium-linux
+	url = https://github.com/imputnet/helium-linux.git
+	ignore = untracked

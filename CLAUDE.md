@@ -5,8 +5,9 @@ a tab strip. This repository never contains Chromium source.
 
 ## Layers
 
-1. `upstream/helium-macos` is a submodule pinned to a Helium macOS release; it
-   carries Helium's core repository as its own submodule.
+1. `upstream/helium-macos` and `upstream/helium-linux` are submodules pinned to
+   Helium releases that carry the same core repository (`helium-chromium`) as
+   their own submodule. `dev.sh` uses the one for the platform it runs on.
 2. `chromium/` holds nori's code as new files, at the paths they take in the
    Chromium tree. `nori sync` links them in and refuses any file that already
    exists upstream.
@@ -30,11 +31,20 @@ nori patch refresh
 Edit patched files in the source tree (`nori patch add` first, `nori patch
 refresh` after); edit overlay files in `chromium/`, which `nori sync` links in.
 `nori patch push` / `pop` move through the series, which is applied in order:
-branding, layout, borderless, layout-view, commands, popup, newtab, settings.
+branding, the platform's branding, layout, borderless, layout-view, commands,
+popup, newtab, settings. macOS uses `patches/series` and Linux
+`patches/series.linux`; a hook into a file only one platform's Helium changes
+goes in that platform's patch, everything else is shared.
 
-To move to a new Helium release, check out its tag in `upstream/helium-macos`,
-update its `helium-chromium` submodule, `nori he reset`, `nori setup`, and
-refresh any nori patch that no longer applies.
+To move to a new Helium release, check out its tag in both upstream
+submodules (they must pin the same `helium-chromium`), update their
+`helium-chromium` submodules, `nori he reset` and `nori setup` on macOS (the
+Linux build sets up again by itself), and refresh any nori patch that no longer
+applies.
+
+On Linux, `devutils/build-linux.sh` builds in Helium's Linux build image and
+keeps the tree in `$NORI_BUILD_DIR` between builds; the Build Linux workflow
+runs it on a dedicated builder.
 
 This repository is a submodule of `wrkrsh/monorepo`. Commit and open pull
 requests here, then commit the new `nori` gitlink in the monorepo.
