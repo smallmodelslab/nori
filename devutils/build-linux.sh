@@ -28,13 +28,13 @@ series() { # each patch in the series with its hash
     [ -n "$patch" ] && echo "$patch $(sha256sum "patches/$patch" | cut -d' ' -f1)"
   done < "patches/$_nori_series"
 }
+# Links this checkout to the kept tree before looking for it.
+_nori_prepare_host
 if [ "$(cat "$stamp" 2>/dev/null)" != "$pin" ] || [ ! -f "$_nori_out/build.ninja" ]; then
   rm -rf "$NORI_BUILD_DIR/helium" "$stamp" "$applied"
   nori setup
   echo "$pin" > "$stamp"
 else
-  # Links this checkout to the kept tree.
-  _nori_prepare_host
   # Re-apply only from the first patch that changed, so the files unchanged
   # patches touch keep their times and nothing that includes them recompiles.
   mapfile -t old < <(cat "$applied" 2>/dev/null || true)
