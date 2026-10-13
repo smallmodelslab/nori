@@ -22,16 +22,33 @@ set -euo pipefail
 source dev.sh
 pin="$(git rev-parse HEAD:upstream/helium-linux)"
 stamp="$NORI_BUILD_DIR/helium-linux.pin"
+applied="$NORI_BUILD_DIR/series.applied"
+series() { # each patch in the series with its hash
+  while read -r patch; do
+    [ -n "$patch" ] && echo "$patch $(sha256sum "patches/$patch" | cut -d' ' -f1)"
+  done < "patches/$_nori_series"
+}
 if [ "$(cat "$stamp" 2>/dev/null)" != "$pin" ] || [ ! -f "$_nori_out/build.ninja" ]; then
-  rm -rf "$NORI_BUILD_DIR/helium" "$stamp"
+  rm -rf "$NORI_BUILD_DIR/helium" "$stamp" "$applied"
   nori setup
   echo "$pin" > "$stamp"
 else
-  # Re-apply nori's current series on the kept tree; quilt restores what the
-  # previous series changed from its own backups.
-  _nori_quilt pop -a -f || true
+  # Re-apply only from the first patch that changed, so the files unchanged
+  # patches touch keep their times and nothing that includes them recompiles.
+  mapfile -t old < <(cat "$applied" 2>/dev/null || true)
+  mapfile -t new < <(series)
+  keep=0
+  while [ "$keep" -lt "${#old[@]}" ] && [ "$keep" -lt "${#new[@]}" ] && [ "${old[$keep]}" = "${new[$keep]}" ]; do
+    keep=$((keep + 1))
+  done
+  if [ ! -f "$applied" ] || [ "$keep" -lt "${#old[@]}" ]; then
+    # quilt restores what the patches above did from its own backups.
+    if [ "$keep" -eq 0 ]; then _nori_quilt pop -a -f || true; else _nori_quilt pop -f "${new[$((keep - 1))]%% *}"; fi
+  fi
   nori_sync
-  _nori_quilt push -a
+  # Exit status 2: the series was already fully applied.
+  _nori_quilt push -a || [ $? -eq 2 ]
 fi
+series > "$applied"
 nori_build
 IN_CONTAINER
