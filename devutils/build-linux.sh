@@ -33,6 +33,8 @@ if [ "$(cat "$stamp" 2>/dev/null)" != "$pin" ] || [ ! -f "$_nori_out/build.ninja
   nori setup
   echo "$pin" > "$stamp"
 else
+  # Links this checkout to the kept tree.
+  _nori_prepare_host
   # Re-apply only from the first patch that changed, so the files unchanged
   # patches touch keep their times and nothing that includes them recompiles.
   mapfile -t old < <(cat "$applied" 2>/dev/null || true)

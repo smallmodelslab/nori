@@ -39,6 +39,12 @@ _nori_hl() {
 }
 
 _nori_quilt() {
+  # quilt otherwise keeps using the patches and series it first applied from,
+  # even from another checkout.
+  if [ -d "$_nori_src/.pc" ]; then
+    echo "$_nori_root/patches" > "$_nori_src/.pc/.quilt_patches"
+    echo "$_nori_series" > "$_nori_src/.pc/.quilt_series"
+  fi
   (cd "$_nori_src" &&
     QUILT_PATCHES="$_nori_root/patches" \
     QUILT_SERIES="$_nori_series" \
