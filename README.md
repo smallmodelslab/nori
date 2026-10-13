@@ -40,8 +40,12 @@ the file changes, comments and all.
 
 ## Building
 
-Needs macOS on Apple silicon, Xcode 26 or later, about 80 GB of free disk, and
+On macOS: Apple silicon, Xcode 26 or later, about 80 GB of free disk, and
 Homebrew packages `coreutils gnu-sed quilt ccache wget python@3.13`.
+
+On Linux: Docker and about 150 GB of free disk. `NORI_BUILD_DIR=<dir>
+devutils/build-linux.sh` builds in Helium's Linux build image; later runs only
+rebuild what changed. The commands below also work inside that image.
 
 ```sh
 source dev.sh
@@ -57,8 +61,9 @@ The Chromium tree lives outside this repository, in `$NORI_BUILD_DIR`
 
 Nori is three layers on top of Chromium:
 
-1. [Helium](https://github.com/imputnet/helium-macos), pinned as the
-   `upstream/helium-macos` submodule, with its patches.
+1. [Helium](https://github.com/imputnet/helium), pinned as the
+   `upstream/helium-macos` and `upstream/helium-linux` submodules, with their
+   patches.
 2. `chromium/`, nori's own code, as new files at their Chromium paths.
    `nori sync` links them into the tree and refuses to shadow an existing file.
 3. `patches/`, a quilt series of small hooks that wire that code into existing
