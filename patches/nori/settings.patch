@@ -14,7 +14,7 @@
      deps += [ "//chrome/browser/ui/webui/signin:inline_login" ]
    }
  
-+  if (is_mac) {
++  if (is_mac || is_linux) {
 +    deps += [ "//chrome/browser/ui/nori:settings" ]
 +  }
 +
@@ -27,7 +27,7 @@
  #include "printing/buildflags/buildflags.h"
  #include "ui/webui/buildflags.h"
  
-+#if BUILDFLAG(IS_MAC)
++#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 +#include "chrome/browser/ui/nori/settings/settings_ui.h"
 +#endif
 +
@@ -38,7 +38,7 @@
    map.AddWebUIConfig(std::make_unique<DefaultBrowserModalUIConfig>());
    map.AddWebUIConfig(std::make_unique<ManagedUserProfileNoticeUIConfig>());
    map.AddWebUIConfig(std::make_unique<HeliumOnboardingPageConfig>());
-+#if BUILDFLAG(IS_MAC)
++#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 +  map.AddWebUIConfig(std::make_unique<nori::SettingsUIConfig>());
 +#endif
    map.AddWebUIConfig(std::make_unique<ProfileCustomizationUIConfig>());
@@ -50,7 +50,7 @@
          "//components/helium_onboarding:generated_resources",
        ]
      }
-+    if (is_mac) {
++    if (is_mac || is_linux) {
 +      sources += [ "$root_gen_dir/chrome/browser/ui/nori/settings/nori_settings_resources.pak" ]
 +      deps += [ "//chrome/browser/ui/nori:settings_resources" ]
 +    }
