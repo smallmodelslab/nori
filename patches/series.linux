@@ -1,4 +1,5 @@
 nori/branding.patch
+nori/branding-linux.patch
 nori/layout.patch
 nori/borderless.patch
 nori/layout-view.patch

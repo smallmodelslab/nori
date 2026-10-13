@@ -1,0 +1,97 @@
+--- a/chrome/BUILD.gn
++++ b/chrome/BUILD.gn
+@@ -152,7 +152,7 @@
+   if (is_win) {
+     _chrome_output_name = "initialexe/chrome"
+   } else {
+-    _chrome_output_name = "helium"
++    _chrome_output_name = "nori"
+   }
+ 
+   executable("chrome_initial") {
+@@ -1873,13 +1873,13 @@
+       ]
+     }
+     extract_symbols("chrome_symbols") {
+-      binary = "$root_out_dir/helium"
++      binary = "$root_out_dir/nori"
+ 
+       if (current_cpu == "x86") {
+         # GYP used "ia32" so keep that naming for back-compat.
+-        symbol_file = "$root_out_dir/helium.breakpad.ia32"
++        symbol_file = "$root_out_dir/nori.breakpad.ia32"
+       } else {
+-        symbol_file = "$root_out_dir/helium.breakpad.$current_cpu"
++        symbol_file = "$root_out_dir/nori.breakpad.$current_cpu"
+       }
+ 
+       deps = [ ":chrome" ]
+--- a/chrome/browser/memory_details_linux.cc
++++ b/chrome/browser/memory_details_linux.cc
+@@ -118,7 +118,7 @@
+   ProcessData current_browser =
+       GetProcessDataMemoryInformation(GetAllChildren(process_map, getpid()));
+   current_browser.name = base::ASCIIToUTF16(version_info::GetProductName());
+-  current_browser.process_name = u"helium";
++  current_browser.process_name = u"nori";
+ 
+   for (auto i = current_browser.processes.begin();
+        i != current_browser.processes.end(); ++i) {
+--- a/chrome/common/channel_info_posix.cc
++++ b/chrome/common/channel_info_posix.cc
+@@ -139,11 +139,11 @@
+   // Allow $CHROME_DESKTOP to override the built-in value, so that development
+   // versions can set themselves as the default without interfering with
+   // non-official, packaged versions using the built-in value.
+-  std::optional<std::string> name = env->GetVar("HELIUM_DESKTOP");
++  std::optional<std::string> name = env->GetVar("NORI_DESKTOP");
+   if (name.has_value() && !name.value().empty()) {
+     return name.value();
+   }
+-  return "helium.desktop";
++  return "nori.desktop";
+ #endif
+ }
+ #endif  // BUILDFLAG(IS_LINUX)
+--- a/chrome/common/chrome_paths_linux.cc
++++ b/chrome/common/chrome_paths_linux.cc
+@@ -81,7 +81,7 @@
+   std::unique_ptr<base::Environment> env(base::Environment::Create());
+   base::FilePath config_dir;
+   std::optional<std::string> chrome_config_home_str =
+-      env->GetVar("HELIUM_CONFIG_HOME");
++      env->GetVar("NORI_CONFIG_HOME");
+   if (chrome_config_home_str.has_value() &&
+       base::IsStringUTF8(chrome_config_home_str.value())) {
+     config_dir = base::FilePath::FromUTF8Unsafe(chrome_config_home_str.value());
+@@ -90,7 +90,7 @@
+         GetXDGDirectory(env.get(), kXdgConfigHomeEnvVar, kDotConfigDir);
+   }
+ 
+-  std::string data_dir_basename = "net.imput.helium";
++  std::string data_dir_basename = "org.smallmodelslab.nori";
+   *result = config_dir.Append(data_dir_basename + GetChannelSuffixForDataDir());
+   return true;
+ }
+--- a/components/crash/core/app/BUILD.gn
++++ b/components/crash/core/app/BUILD.gn
+@@ -246,7 +246,7 @@
+   # We build a chromium-specific crashpad_handler executable so that we can
+   # define custom UserStreamDataSources.
+   executable("chrome_crashpad_handler") {
+-    output_name = "helium_crashpad_handler"
++    output_name = "nori_crashpad_handler"
+     sources = [ "chrome_crashpad_handler.cc" ]
+ 
+     deps = [
+--- a/components/crash/core/app/crashpad_linux.cc
++++ b/components/crash/core/app/crashpad_linux.cc
+@@ -174,7 +174,7 @@
+     if (!base::PathService::Get(base::DIR_EXE, &handler_path)) {
+       return false;
+     }
+-    handler_path = handler_path.Append("helium_crashpad_handler");
++    handler_path = handler_path.Append("nori_crashpad_handler");
+ 
+     // When --use-cros-crash-reporter is set (below), the handler passes dumps
+     // to ChromeOS's /sbin/crash_reporter which in turn passes the dump to
