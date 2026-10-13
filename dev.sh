@@ -15,9 +15,13 @@ _nori_build="${NORI_BUILD_DIR:-$HOME/.local/share/nori/build}"
 _nori_venv="$_nori_build/venv"
 _nori_src="$_nori_helium/build/src"
 _nori_out="$_nori_src/out/Default"
+# Hooks into files only one platform's Helium changes live in that platform's
+# series; the rest are shared.
 if [ "$_nori_platform" = linux ]; then
-  _nori_profile="${XDG_CONFIG_HOME:-$HOME/.config}/nori-dev"
+  _nori_series=series.linux
+  _nori_profile="${XDG_CONFIG_HOME:-$HOME/.config}/org.smallmodelslab.nori.dev"
 else
+  _nori_series=series
   _nori_profile="$HOME/Library/Application Support/org.smallmodelslab.nori.dev"
 fi
 
@@ -37,7 +41,7 @@ _nori_hl() {
 _nori_quilt() {
   (cd "$_nori_src" &&
     QUILT_PATCHES="$_nori_root/patches" \
-    QUILT_SERIES=series \
+    QUILT_SERIES="$_nori_series" \
     QUILT_PATCH_OPTS="--unified --reject-format=unified" \
     QUILT_DIFF_ARGS="-p ab --no-timestamps --no-index" \
     QUILT_REFRESH_ARGS="-p ab --no-timestamps --no-index" \
