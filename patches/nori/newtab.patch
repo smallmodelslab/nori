@@ -1,16 +1,16 @@
 --- a/chrome/app/chrome_command_ids.h
 +++ b/chrome/app/chrome_command_ids.h
-@@ -417,6 +417,10 @@
- // Listen to this page context menu.
- #define IDC_CONTENT_CONTEXT_LISTEN_TO_THIS_PAGE 50195
+@@ -419,6 +419,10 @@
  #define IDC_CONTENT_CONTEXT_SYSTEM_TRANSLATE 50196
+ // Open with items.
+ #define IDC_CONTENT_CONTEXT_OPEN_WITH1 50200
 +// Nori link items.
 +#define IDC_CONTENT_CONTEXT_NORI_OPENLINK_RIGHT 50197
 +#define IDC_CONTENT_CONTEXT_NORI_OPENLINK_BELOW 50198
 +#define IDC_CONTENT_CONTEXT_NORI_OPENLINK_ABOVE 50199
- // Open with items.
- #define IDC_CONTENT_CONTEXT_OPEN_WITH1 50200
  // Context menu items that provide fast access to input methods.
+ #define IDC_CONTENT_CONTEXT_EMOJI 50220
+ #define IDC_CONTENT_CONTEXT_DICTATION  50229
 --- a/chrome/browser/renderer_context_menu/BUILD.gn
 +++ b/chrome/browser/renderer_context_menu/BUILD.gn
 @@ -154,6 +154,8 @@
