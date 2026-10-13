@@ -1,0 +1,6 @@
+# Helium's Linux build image, plus quilt for nori's patch series. Build
+# Helium's image first as chromium-builder:trixie-slim (devutils/build-linux.sh).
+FROM chromium-builder:trixie-slim
+USER root
+RUN apt-get -y update && apt-get -y install quilt && rm -rf /var/lib/apt/lists/*
+USER builder
