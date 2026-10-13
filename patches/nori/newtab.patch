@@ -1,16 +1,16 @@
 --- a/chrome/app/chrome_command_ids.h
 +++ b/chrome/app/chrome_command_ids.h
-@@ -419,6 +419,10 @@
- #define IDC_CONTENT_CONTEXT_SYSTEM_TRANSLATE 50196
- // Open with items.
- #define IDC_CONTENT_CONTEXT_OPEN_WITH1 50200
+@@ -427,6 +427,10 @@
+ #define IDC_CONTENT_CONTEXT_RELOAD_GLIC  50232
+ #define IDC_CONTENT_CONTEXT_ARCHIVE_GLIC 50233
+ #define IDC_CONTENT_CONTEXT_GLIC    50234
 +// Nori link items.
 +#define IDC_CONTENT_CONTEXT_NORI_OPENLINK_RIGHT 50197
 +#define IDC_CONTENT_CONTEXT_NORI_OPENLINK_BELOW 50198
 +#define IDC_CONTENT_CONTEXT_NORI_OPENLINK_ABOVE 50199
- // Context menu items that provide fast access to input methods.
- #define IDC_CONTENT_CONTEXT_EMOJI 50220
- #define IDC_CONTENT_CONTEXT_DICTATION  50229
+ // Context menu items in the bookmark bar
+ #define IDC_BOOKMARK_BAR_OPEN_ALL 51000
+ #define IDC_BOOKMARK_BAR_OPEN_ALL_NEW_WINDOW 51001
 --- a/chrome/browser/renderer_context_menu/BUILD.gn
 +++ b/chrome/browser/renderer_context_menu/BUILD.gn
 @@ -154,6 +154,8 @@

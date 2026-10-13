@@ -38,8 +38,9 @@ goes in that platform's patch, everything else is shared.
 
 To move to a new Helium release, check out its tag in both upstream
 submodules (they must pin the same `helium-chromium`), update their
-`helium-chromium` submodules, `nori he reset`, `nori setup`, and refresh any
-nori patch that no longer applies.
+`helium-chromium` submodules, `nori he reset` and `nori setup` on macOS (the
+Linux build sets up again by itself), and refresh any nori patch that no longer
+applies.
 
 On Linux, `devutils/build-linux.sh` builds in Helium's Linux build image and
 keeps the tree in `$NORI_BUILD_DIR` between builds; the Build Linux workflow

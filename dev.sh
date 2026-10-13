@@ -28,6 +28,10 @@ fi
 # Helium's dev.sh locates itself through $0, which only resolves when it is
 # sourced by zsh from its own directory.
 _nori_he() {
+  if [ "$_nori_platform" = linux ]; then
+    echo "nori he runs Helium's macOS dev commands; on Linux use devutils/build-linux.sh." >&2
+    return 2
+  fi
   (cd "$_nori_helium" && PATH="$_nori_venv/bin:$PATH" zsh -c 'source ./dev.sh && he "$@"' he "$@")
 }
 
@@ -162,11 +166,11 @@ nori() {
 usage: nori <command>
   setup        download Chromium, apply Helium, the overlay and nori's patches, run gn
   sync         link chromium/ into the source tree (new files only)
-  build        sync, then build a development Nori.app
+  build        sync, then build a development Nori
   test [flags] sync, then build and run nori_unittests (gtest flags pass through)
   run [flags]  run the development build with its own profile
   patch ...    run quilt on nori's patch series (new, add, refresh, push, pop)
-  he ...       run a Helium dev command (see `nori he`)
+  he ...       run a Helium macOS dev command (see `nori he`)
 EOF
       return 2
       ;;
