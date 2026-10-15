@@ -63,12 +63,19 @@
  #include "chrome/browser/ui/tabs/features.h"
  #include "chrome/browser/ui/ui_features.h"
  #include "components/lens/buildflags.h"
-@@ -356,6 +357,10 @@
+@@ -356,6 +357,17 @@
                           std::begin(kTabGroupAcceleratorMap),
                           std::end(kTabGroupAcceleratorMap));
  #endif  // !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_CHROMEOS)
 +
 +    for (const nori::Command& command : nori::Commands()) {
++      // Helium keeps the first command for each accelerator. Replace the
++      // Chromium binding rather than appending a duplicate that is discarded
++      // before Nori's shortcut configuration can claim it.
++      std::erase_if(*accelerators, [&command](const auto& accelerator) {
++        return accelerator.keycode == command.key &&
++               accelerator.modifiers == command.modifiers;
++      });
 +      accelerators->push_back({command.key, command.modifiers, command.id});
 +    }
    }
@@ -148,3 +155,80 @@
    switch (command_id) {
      case IDC_BACK:
        return Label(IDS_SHORTCUT_COMMAND_BACK);
+--- a/chrome/browser/ui/browser_command_controller_browsertest.cc
++++ b/chrome/browser/ui/browser_command_controller_browsertest.cc
+@@ -40,6 +40,8 @@
+ #include "chrome/browser/translate/translate_test_utils.h"
+ #include "chrome/browser/ui/browser.h"
+ #include "chrome/browser/ui/browser_commands.h"
++#include "chrome/browser/ui/browser_shortcuts/browser_shortcut_service.h"
++#include "chrome/browser/ui/browser_shortcuts/browser_shortcut_service_factory.h"
+ #include "chrome/browser/ui/browser_window.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+ #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
+@@ -58,6 +60,7 @@
+ #include "chrome/browser/ui/tabs/tab_enums.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/ui_features.h"
++#include "chrome/browser/ui/views/frame/browser_view.h"
+ #include "chrome/common/chrome_features.h"
+ #include "chrome/common/chrome_switches.h"
+ #include "chrome/common/pref_names.h"
+@@ -91,7 +94,10 @@
+ #include "google_apis/gaia/gaia_urls.h"
+ #include "net/base/network_change_notifier.h"
+ #include "ui/actions/actions.h"
++#include "ui/base/accelerators/accelerator.h"
+ #include "ui/base/ui_base_features.h"
++#include "ui/events/event_constants.h"
++#include "ui/views/focus/focus_manager.h"
+ #include "ui/events/keycodes/dom/dom_code.h"
+ #include "ui/events/keycodes/keyboard_codes.h"
+ 
+@@ -250,6 +256,46 @@
+   }
+ };
+ 
++#if BUILDFLAG(IS_LINUX)
++// Exercise the registered browser accelerators, not just Nori's layout model:
++// a duplicate binding used to dispatch Ctrl+N to IDC_NEW_WINDOW on Linux.
++IN_PROC_BROWSER_TEST_F(BrowserCommandControllerBrowserTest,
++                       NoriColumnsStayInOneWindow) {
++  constexpr int kNoriModifiers = ui::EF_ALT_DOWN;
++  auto* shortcuts =
++      browser_shortcuts::BrowserShortcutServiceFactory::GetForProfile(
++          browser()->profile());
++  ASSERT_TRUE(shortcuts);
++  EXPECT_EQ(shortcuts->FindCommandForAccelerator("alt+n"), IDC_NORI_FOCUS_LEFT);
++  EXPECT_EQ(shortcuts->FindCommandForAccelerator("alt+e"), IDC_NORI_FOCUS_DOWN);
++  EXPECT_EQ(shortcuts->FindCommandForAccelerator("ctrl+n"), IDC_NEW_WINDOW);
++  auto* focus =
++      BrowserView::GetBrowserViewForBrowser(browser())->GetFocusManager();
++  auto* tabs = browser()->tab_strip_model();
++  const size_t windows = GlobalBrowserCollection::GetInstance()->GetSize();
++  const int count = tabs->count();
++  ASSERT_TRUE(focus->ProcessAccelerator(
++      ui::Accelerator(ui::VKEY_T, ui::EF_PLATFORM_ACCELERATOR)));
++  base::RunLoop().RunUntilIdle();
++  ASSERT_EQ(tabs->count(), count + 1);
++  ASSERT_EQ(tabs->active_index(), count);
++  EXPECT_EQ(GlobalBrowserCollection::GetInstance()->GetSize(), windows);
++
++  ASSERT_TRUE(
++      focus->ProcessAccelerator(ui::Accelerator(ui::VKEY_N, kNoriModifiers)));
++  base::RunLoop().RunUntilIdle();
++  EXPECT_EQ(tabs->active_index(), count - 1);
++  EXPECT_EQ(tabs->count(), count + 1);
++  EXPECT_EQ(GlobalBrowserCollection::GetInstance()->GetSize(), windows);
++
++  ASSERT_TRUE(
++      focus->ProcessAccelerator(ui::Accelerator(ui::VKEY_I, kNoriModifiers)));
++  base::RunLoop().RunUntilIdle();
++  EXPECT_EQ(tabs->active_index(), count);
++  EXPECT_EQ(GlobalBrowserCollection::GetInstance()->GetSize(), windows);
++}
++#endif  // BUILDFLAG(IS_LINUX)
++
+ // Test case for menus that only appear after Chrome Refresh.
+ class BrowserCommandControllerBrowserTestRefreshOnly
+     : public BrowserCommandControllerBrowserTest {
