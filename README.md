@@ -11,17 +11,20 @@ integration work as they do there.
 
 ## Keys
 
-| Key | Action |
-| --- | --- |
-| Ctrl+N / Ctrl+I | Focus the column to the left / right |
-| Ctrl+U / Ctrl+E | Focus the tab above / below, then the workspace above / below |
-| Ctrl+Enter | Toggle the focused column between its width and the full window |
-| Ctrl+B | Address, site settings and extensions for the focused tab |
-| Ctrl+, | Nori settings |
-| Escape | Close the Ctrl+B popup |
+| macOS | Linux | Action |
+| --- | --- | --- |
+| Ctrl+N / Ctrl+I | Alt+N / Alt+I | Focus the column to the left / right |
+| Ctrl+U / Ctrl+E | Alt+U / Alt+E | Focus the tab above / below, then the workspace above / below |
+| Ctrl+Enter | Alt+Enter | Toggle the focused column between its width and the full window |
+| Ctrl+B | Alt+B | Address, site settings and extensions for the focused tab |
+| Ctrl+, | Alt+, | Nori settings |
+| Escape | Escape | Close the address popup |
 
-Ctrl rather than Cmd, so the usual browser shortcuts keep working. U, N, E and
-I sit where W, A, S and D are for a Colemak typist.
+Ctrl on macOS and Alt on Linux leave the usual Cmd and Ctrl browser shortcuts
+working. On Linux, Alt+E replaces Chromium's app-menu shortcut. Ctrl+T (Cmd+T
+on macOS) opens a new column inside the current Nori window; Ctrl+N (Cmd+N on
+macOS) still opens a separate window. U, N, E and I sit where W, A, S and D
+are for a Colemak typist.
 
 A link's context menu opens it in a new tab to the right (a new column),
 below or above (stacked in the same column). Cmd+click, middle-click and
@@ -33,10 +36,13 @@ Everything is set in `~/.config/nori/config.toml` (`$XDG_CONFIG_HOME/nori` if
 set), which Nori writes with every setting and its default the first time it
 runs and reloads whenever it changes.
 
-Ctrl+, opens chrome://nori-settings: the file on the right, and on the left a
-control for each setting, level with the line that sets it. Move a line in the
-file and its control moves with it; change a control and only that value in
-the file changes, comments and all.
+Ctrl+, on macOS or Alt+, on Linux opens chrome://nori-settings: the file on
+the right, and on the left a control for each setting, level with the line
+that sets it. Move a line in the file and its control moves with it; change
+a control and only that value in the file changes, comments and all.
+
+Existing Linux config files keep their explicit shortcuts. Remove the `[keys]`
+section to use the new defaults, or change its `ctrl+` bindings to `alt+`.
 
 ## Building
 
