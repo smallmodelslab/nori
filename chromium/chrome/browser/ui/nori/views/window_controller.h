@@ -24,7 +24,7 @@ struct Config;
 class WindowController {
  public:
   // `contents_host` is the view that holds the window's page contents, and
-  // `top_container` the browser chrome that nori shows as the Ctrl+B popup.
+  // `top_container` the browser chrome that nori floats for Ctrl+L.
   WindowController(BrowserWindowInterface* browser,
                    views::View* contents_host,
                    views::View* top_container);

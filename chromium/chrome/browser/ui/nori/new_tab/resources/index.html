@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Nori</title>
+  <link rel="stylesheet" href="new_tab.css">
+  <script src="new_tab.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Nori<span aria-hidden="true">.</span></h1>
+    <button id="palette" aria-label="Search tabs, commands, or the web">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+      <span>Search or run a command</span><kbd id="palette-key">Ctrl B</kbd>
+    </button>
+    <ul>
+      <li><span>Split right</span><kbd>Ctrl D</kbd></li>
+      <li><span>Split down</span><kbd>Ctrl ⇧ D</kbd></li>
+      <li><span>Close pane</span><kbd id="close-key">Ctrl W</kbd></li>
+    </ul>
+  </main>
+  <a href="chrome://nori-settings/" class="settings" aria-label="Nori settings">Settings</a>
+</body>
+</html>

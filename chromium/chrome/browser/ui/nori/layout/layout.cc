@@ -12,6 +12,81 @@ namespace nori {
 
 namespace {
 
+Pane* FindPane(Pane& pane, TabId tab) {
+  if (pane.children.empty())
+    return pane.tab == tab ? &pane : nullptr;
+  for (Pane& child : pane.children) {
+    if (Pane* found = FindPane(child, tab))
+      return found;
+  }
+  return nullptr;
+}
+
+const Pane* FindPane(const Pane& pane, TabId tab) {
+  if (pane.children.empty())
+    return pane.tab == tab ? &pane : nullptr;
+  for (const Pane& child : pane.children) {
+    if (const Pane* found = FindPane(child, tab))
+      return found;
+  }
+  return nullptr;
+}
+
+void AppendOrder(const Pane& pane, std::vector<TabId>& order) {
+  if (pane.children.empty()) {
+    order.push_back(pane.tab);
+  } else {
+    for (const Pane& child : pane.children)
+      AppendOrder(child, order);
+  }
+}
+
+// Collapsing a branch gives its entire rectangle to the surviving sibling.
+bool RemovePane(Pane& pane, TabId tab, TabId& focused) {
+  if (pane.children.empty())
+    return pane.tab == tab;
+  for (size_t i = 0; i < pane.children.size(); ++i) {
+    if (RemovePane(pane.children[i], tab, focused)) {
+      Pane sibling = std::move(pane.children[1 - i]);
+      pane = std::move(sibling);
+      if (focused == tab) {
+        const Pane* first = &pane;
+        while (!first->children.empty())
+          first = &first->children.front();
+        focused = first->tab;
+      }
+      return false;
+    }
+  }
+  return false;
+}
+
+void AppendTiles(const Pane& pane,
+                 const Rect& bounds,
+                 int gap,
+                 std::vector<Tile>& tiles) {
+  if (pane.children.empty()) {
+    tiles.push_back({pane.tab, bounds});
+    return;
+  }
+  const int length = pane.horizontal ? bounds.width : bounds.height;
+  const int spacing = std::min(gap, std::max(0, length - 2));
+  const int first = (length - spacing) / 2;
+  Rect a = bounds;
+  Rect b = bounds;
+  if (pane.horizontal) {
+    a.width = first;
+    b.x += first + spacing;
+    b.width -= first + spacing;
+  } else {
+    a.height = first;
+    b.y += first + spacing;
+    b.height -= first + spacing;
+  }
+  AppendTiles(pane.children[0], a, gap, tiles);
+  AppendTiles(pane.children[1], b, gap, tiles);
+}
+
 bool IsEmpty(const Workspace& workspace) {
   return workspace.columns.empty();
 }
@@ -30,10 +105,9 @@ Layout Normalize(Layout layout) {
     kept.scroll = workspace.scroll;
     for (size_t c = 0; c < workspace.columns.size(); ++c) {
       Column& column = workspace.columns[c];
-      if (column.tabs.empty()) {
+      if (!column.root) {
         continue;
       }
-      column.focused = std::min(column.focused, column.tabs.size() - 1);
       if (c < workspace.focused) {
         ++kept.focused;
       }
@@ -77,7 +151,7 @@ int ScrollToShow(const Workspace& workspace,
   int right = 0;
   int total = 0;
   for (size_t c = 0; c < workspace.columns.size(); ++c) {
-    const int width = ColumnWidth(workspace.columns[c], geometry);
+    const int width = geometry.width;
     if (c == workspace.focused) {
       left = total;
       right = total + width;
@@ -98,10 +172,8 @@ std::optional<Location> Find(const Layout& layout, TabId tab) {
   for (size_t w = 0; w < layout.workspaces.size(); ++w) {
     const auto& columns = layout.workspaces[w].columns;
     for (size_t c = 0; c < columns.size(); ++c) {
-      const auto& tabs = columns[c].tabs;
-      auto it = std::ranges::find(tabs, tab);
-      if (it != tabs.end()) {
-        return Location{w, c, static_cast<size_t>(it - tabs.begin())};
+      if (FindPane(*columns[c].root, tab)) {
+        return Location{w, c};
       }
     }
   }
@@ -122,14 +194,14 @@ std::optional<TabId> FocusedTab(const Layout& layout) {
     return std::nullopt;
   }
   const Column& column = workspace.columns[workspace.focused];
-  return column.tabs[column.focused];
+  return column.focused;
 }
 
 std::vector<TabId> Order(const Layout& layout) {
   std::vector<TabId> order;
   for (const Workspace& workspace : layout.workspaces) {
     for (const Column& column : workspace.columns) {
-      order.insert(order.end(), column.tabs.begin(), column.tabs.end());
+      AppendOrder(*column.root, order);
     }
   }
   return order;
@@ -141,23 +213,24 @@ Layout Insert(Layout layout, TabId tab, Placement placement) {
   }
   Workspace& workspace = layout.workspaces[layout.focused];
   if (IsEmpty(workspace)) {
-    workspace.columns.push_back(Column{.tabs = {tab}});
+    workspace.columns.push_back(
+        Column{.root = Pane{.tab = tab}, .focused = tab});
     return Normalize(std::move(layout));
   }
 
   Column& column = FocusedColumn(workspace);
-  switch (placement) {
-    case Placement::kAbove:
-      column.tabs.insert(column.tabs.begin() + column.focused, tab);
-      ++column.focused;
-      break;
-    case Placement::kBelow:
-      column.tabs.insert(column.tabs.begin() + column.focused + 1, tab);
-      break;
-    case Placement::kRight:
-      workspace.columns.insert(workspace.columns.begin() + workspace.focused + 1,
-                               Column{.tabs = {tab}});
-      break;
+  if (placement == Placement::kRight) {
+    workspace.columns.insert(workspace.columns.begin() + workspace.focused + 1,
+                             Column{.root = Pane{.tab = tab}, .focused = tab});
+  } else {
+    Pane* target = FindPane(*column.root, column.focused);
+    Pane previous = std::move(*target);
+    *target = Pane{.horizontal = placement == Placement::kSplitRight};
+    target->children = {std::move(previous), Pane{.tab = tab}};
+    if (placement == Placement::kAbove) {
+      std::swap(target->children[0], target->children[1]);
+    }
+    column.maximized = false;
   }
   return Normalize(std::move(layout));
 }
@@ -169,9 +242,10 @@ Layout Remove(Layout layout, TabId tab) {
   }
   Column& column =
       layout.workspaces[location->workspace].columns[location->column];
-  column.tabs.erase(column.tabs.begin() + location->tab);
-  if (location->tab < column.focused) {
-    --column.focused;
+  if (column.root->children.empty()) {
+    column.root.reset();
+  } else {
+    RemovePane(*column.root, tab, column.focused);
   }
   return Normalize(std::move(layout));
 }
@@ -179,31 +253,55 @@ Layout Remove(Layout layout, TabId tab) {
 Layout Focus(Layout layout, Direction direction) {
   Workspace& workspace = layout.workspaces[layout.focused];
   const bool empty = IsEmpty(workspace);
+  if (!empty) {
+    Column& column = FocusedColumn(workspace);
+    // Find the closest pane in the requested direction within the split tree.
+    std::vector<Tile> panes;
+    AppendTiles(*column.root, {0, 0, 10000, 10000}, 0, panes);
+    auto current = std::ranges::find(panes, column.focused, &Tile::tab);
+    const bool horizontal =
+        direction == Direction::kLeft || direction == Direction::kRight;
+    const bool positive =
+        direction == Direction::kRight || direction == Direction::kDown;
+    const Rect& from = current->bounds;
+    const Tile* best = nullptr;
+    int best_distance = 0;
+    for (const Tile& candidate : panes) {
+      const Rect& to = candidate.bounds;
+      const int along = horizontal ? to.x - from.x : to.y - from.y;
+      const bool overlaps =
+          horizontal ? to.y < from.y + from.height && to.y + to.height > from.y
+                     : to.x < from.x + from.width && to.x + to.width > from.x;
+      if (candidate.tab == column.focused || !overlaps ||
+          (positive ? along <= 0 : along >= 0)) {
+        continue;
+      }
+      if (!best || std::abs(along) < best_distance) {
+        best = &candidate;
+        best_distance = std::abs(along);
+      }
+    }
+    if (best) {
+      column.focused = best->tab;
+      return layout;
+    }
+  }
   switch (direction) {
     case Direction::kLeft:
-      if (workspace.focused > 0) {
+      if (workspace.focused > 0)
         --workspace.focused;
-      }
       break;
     case Direction::kRight:
-      if (workspace.focused + 1 < workspace.columns.size()) {
+      if (workspace.focused + 1 < workspace.columns.size())
         ++workspace.focused;
-      }
       break;
     case Direction::kUp:
-      if (!empty && FocusedColumn(workspace).focused > 0) {
-        --FocusedColumn(workspace).focused;
-      } else if (layout.focused > 0) {
+      if (layout.focused > 0)
         --layout.focused;
-      }
       break;
     case Direction::kDown:
-      if (!empty && FocusedColumn(workspace).focused + 1 <
-                        FocusedColumn(workspace).tabs.size()) {
-        ++FocusedColumn(workspace).focused;
-      } else if (layout.focused + 1 < layout.workspaces.size()) {
+      if (layout.focused + 1 < layout.workspaces.size())
         ++layout.focused;
-      }
       break;
   }
   return Normalize(std::move(layout));
@@ -217,23 +315,16 @@ Layout FocusTab(Layout layout, TabId tab) {
   layout.focused = location->workspace;
   Workspace& workspace = layout.workspaces[location->workspace];
   workspace.focused = location->column;
-  FocusedColumn(workspace).focused = location->tab;
+  FocusedColumn(workspace).focused = tab;
   return Normalize(std::move(layout));
 }
 
-Layout ToggleFullWidth(Layout layout) {
+Layout ToggleMaximize(Layout layout) {
   Workspace& workspace = layout.workspaces[layout.focused];
   if (!IsEmpty(workspace)) {
-    FocusedColumn(workspace).full_width = !FocusedColumn(workspace).full_width;
+    FocusedColumn(workspace).maximized = !FocusedColumn(workspace).maximized;
   }
   return layout;
-}
-
-int ColumnWidth(const Column& column, const Geometry& geometry) {
-  if (column.full_width) {
-    return geometry.width;
-  }
-  return static_cast<int>(std::lround(geometry.width * geometry.column_fraction));
 }
 
 Layout ScrollIntoView(Layout layout, const Geometry& geometry) {
@@ -264,13 +355,13 @@ std::vector<Tile> Tiles(const Layout& layout,
                            : workspace.scroll;
     int left = -scroll;
     for (const Column& column : workspace.columns) {
-      const int width = ColumnWidth(column, geometry);
+      const int width = geometry.width;
       if (left < geometry.width && left + width > 0) {
-        const int count = static_cast<int>(column.tabs.size());
-        for (int i = 0; i < count; ++i) {
-          const int y = top + i * geometry.height / count;
-          const int bottom = top + (i + 1) * geometry.height / count;
-          tiles.push_back({column.tabs[i], {left, y, width, bottom - y}});
+        const Rect bounds{left, top, width, geometry.height};
+        if (column.maximized) {
+          tiles.push_back({column.focused, bounds});
+        } else {
+          AppendTiles(*column.root, bounds, geometry.gap, tiles);
         }
       }
       left += width + geometry.gap;

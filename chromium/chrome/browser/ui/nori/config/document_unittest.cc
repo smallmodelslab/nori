@@ -33,29 +33,28 @@ TEST(NoriConfigTest, TheDefaultFileListsEverySettingWithoutErrors) {
   EXPECT_EQ(document.config, DefaultConfig());
 }
 
-TEST(NoriConfigTest, DefaultsShowTwoColumnsAndTheColemakKeys) {
+TEST(NoriConfigTest, DefaultsUseTheColemakKeys) {
   const Config config = DefaultConfig();
 
-  EXPECT_EQ(config.column_width, 0.5);
   EXPECT_EQ(config.gap, 0);
   EXPECT_EQ(config.horizontal.stiffness, 800);
   EXPECT_EQ(config.link_placement, Placement::kRight);
   EXPECT_EQ(config.keys.at("focus_left"),
             (Shortcut{ui::VKEY_N, ui::EF_CONTROL_DOWN}));
-  EXPECT_EQ(config.keys.at("toggle_full_width"),
+  EXPECT_EQ(config.keys.at("maximize"),
             (Shortcut{ui::VKEY_RETURN, ui::EF_CONTROL_DOWN}));
 }
 
 TEST(NoriConfigTest, ValidValuesOverrideTheDefaults) {
   const Document document = Parse(
       "[layout]\n"
-      "default_column_width = 1\n"
+      "gaps = 12\n"
       "[new_tab]\n"
       "link_placement = \"below\"\n"
       "[keys]\n"
       "focus_left = \"ctrl+shift+h\"\n");
 
-  EXPECT_EQ(document.config.column_width, 1.0);
+  EXPECT_EQ(document.config.gap, 12);
   EXPECT_EQ(document.config.link_placement, Placement::kBelow);
   EXPECT_EQ(document.config.keys.at("focus_left"),
             (Shortcut{ui::VKEY_H, ui::EF_CONTROL_DOWN | ui::EF_SHIFT_DOWN}));
@@ -67,7 +66,7 @@ TEST(NoriConfigTest, InvalidValuesAreReportedAndKeepTheirDefault) {
   const Document document = Parse(
       "[layout]\n"
       "gaps = -4\n"
-      "default_column_width = \"wide\"\n"
+      "removed_column_width = \"wide\"\n"
       "[new_tab]\n"
       "link_placement = \"left\"\n"
       "colour = 3\n");
@@ -85,7 +84,7 @@ TEST(NoriConfigTest, NodesAreInFileOrderWithTheirLines) {
       "# Comment\n"
       "[layout]\n"
       "gaps = 8\n"
-      "default_column_width = 0.75\n"
+      "removed_column_width = 0.75\n"
       "\n"
       "[animation.horizontal]\n"
       "stiffness = 1200 # snappier\n");
@@ -93,7 +92,7 @@ TEST(NoriConfigTest, NodesAreInFileOrderWithTheirLines) {
   ASSERT_EQ(document.nodes.size(), 3u);
   EXPECT_EQ(document.nodes[0].path, "layout.gaps");
   EXPECT_EQ(document.nodes[0].line, 3);
-  EXPECT_EQ(document.nodes[1].path, "layout.default_column_width");
+  EXPECT_EQ(document.nodes[1].path, "layout.removed_column_width");
   EXPECT_EQ(document.nodes[1].line, 4);
   EXPECT_EQ(document.nodes[1].literal, "0.75");
   EXPECT_EQ(document.nodes[2].path, "animation.horizontal.stiffness");
@@ -115,7 +114,7 @@ TEST(NoriConfigTest, ReplacingAValueKeepsEverythingElse) {
       "# Mine\n"
       "[layout]\n"
       "gaps   =  0   # tight\n"
-      "default_column_width = 0.5\n"
+      "removed_column_width = 0.5\n"
       "[keys]\n"
       "popup = \"ctrl+b\" # é\n"
       "focus_up = \"ctrl+u\"\n";
@@ -124,7 +123,7 @@ TEST(NoriConfigTest, ReplacingAValueKeepsEverythingElse) {
             "# Mine\n"
             "[layout]\n"
             "gaps   =  12   # tight\n"
-            "default_column_width = 0.5\n"
+            "removed_column_width = 0.5\n"
             "[keys]\n"
             "popup = \"ctrl+b\" # é\n"
             "focus_up = \"ctrl+u\"\n");
@@ -132,7 +131,7 @@ TEST(NoriConfigTest, ReplacingAValueKeepsEverythingElse) {
             "# Mine\n"
             "[layout]\n"
             "gaps   =  0   # tight\n"
-            "default_column_width = 0.5\n"
+            "removed_column_width = 0.5\n"
             "[keys]\n"
             "popup = \"ctrl+b\" # é\n"
             "focus_up = \"cmd+é\"\n");
@@ -141,7 +140,7 @@ TEST(NoriConfigTest, ReplacingAValueKeepsEverythingElse) {
 TEST(NoriConfigTest, ReplacingRejectsMissingKeysAndNonValues) {
   const std::string text = "[layout]\ngaps = 0\n";
 
-  EXPECT_FALSE(ReplaceValue(text, "layout.default_column_width", "0.5"));
+  EXPECT_FALSE(ReplaceValue(text, "layout.removed_column_width", "0.5"));
   EXPECT_FALSE(ReplaceValue(text, "layout", "1"));
   EXPECT_FALSE(ReplaceValue(text, "layout.gaps", "1\nextra = 2"));
   EXPECT_FALSE(ReplaceValue(text, "layout.gaps", "1 2"));

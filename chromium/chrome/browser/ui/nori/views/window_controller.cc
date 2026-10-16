@@ -17,7 +17,6 @@ namespace {
 
 LayoutOptions LayoutOptionsFor(const Config& config) {
   LayoutOptions options;
-  options.column_fraction = config.column_width;
   options.gap = config.gap;
   options.horizontal = config.horizontal;
   options.vertical = config.vertical;

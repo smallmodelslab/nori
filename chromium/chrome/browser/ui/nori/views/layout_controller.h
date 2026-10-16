@@ -13,7 +13,6 @@
 #include "base/functional/function_ref.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/scoped_observation.h"
 #include "chrome/browser/ui/nori/layout/layout.h"
 #include "chrome/browser/ui/nori/layout/spring.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
@@ -40,7 +39,6 @@ class WebView;
 namespace nori {
 
 struct LayoutOptions {
-  double column_fraction = 0.5;
   int gap = 0;
   SpringParams horizontal;
   SpringParams vertical;
@@ -72,7 +70,7 @@ class LayoutController : public TabStripModelObserver,
   static LayoutController* From(BrowserWindowInterface* browser);
 
   void Focus(Direction direction);
-  void ToggleFullWidth();
+  void ToggleMaximize();
   // Runs `open`, putting any tab it opens at `placement` instead of
   // `LayoutOptions::placement`.
   void OpenWithPlacement(Placement placement, base::FunctionRef<void()> open);
@@ -82,16 +80,20 @@ class LayoutController : public TabStripModelObserver,
   // peer still holds it.
   void Release(content::WebContents* contents);
 
+  // Actual host bounds, distinct from hypothetical layout measurements.
+  void SetViewportSize(const gfx::Size& size);
+
   // Lays out `active_container` and the peers within a host of `size`.
   void AddChildLayouts(const gfx::Size& size,
                        views::View* active_container,
-                       std::vector<views::ChildLayout>& layouts);
+                       std::vector<views::ChildLayout>& layouts) const;
 
  private:
   // TabStripModelObserver:
-  void OnTabStripModelChanged(TabStripModel* tab_strip_model,
-                              const TabStripModelChange& change,
-                              const TabStripSelectionChange& selection) override;
+  void OnTabStripModelChanged(
+      TabStripModel* tab_strip_model,
+      const TabStripModelChange& change,
+      const TabStripSelectionChange& selection) override;
 
   // ui::CompositorAnimationObserver:
   void OnAnimationStep(base::TimeTicks timestamp) override;
@@ -101,7 +103,6 @@ class LayoutController : public TabStripModelObserver,
   // Replaces the layout, scrolls it into view, and animates the view from
   // where it is now.
   void SetLayout(Layout layout);
-  void SetGeometry(const gfx::Size& size);
   std::vector<Tile> CurrentTiles(base::TimeTicks now) const;
 
   // Gives every visible tab other than the active one a peer.
@@ -132,6 +133,8 @@ class LayoutController : public TabStripModelObserver,
 
   Motion scroll_;
   Motion stack_;
+  Motion resize_;
+  std::map<TabId, Rect> resize_from_;
   raw_ptr<ui::Compositor> compositor_ = nullptr;
 
   struct Peer {

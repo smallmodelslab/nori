@@ -109,6 +109,22 @@ grit("settings_resources") {
   ]
 }
 
+grit("new_tab_resources") {
+  source = "new_tab/resources/nori_new_tab_resources.grd"
+  inputs = [
+    "new_tab/resources/index.html",
+    "new_tab/resources/new_tab.css",
+    "new_tab/resources/new_tab.js",
+  ]
+  output_dir = "$target_gen_dir/new_tab"
+  outputs = [
+    "grit/nori_new_tab_resources.h",
+    "grit/nori_new_tab_resources_map.cc",
+    "grit/nori_new_tab_resources_map.h",
+    "nori_new_tab_resources.pak",
+  ]
+}
+
 source_set("settings") {
   sources = [
     "settings/settings_handler.cc",
@@ -125,6 +141,47 @@ source_set("settings") {
   ]
 }
 
+source_set("new_tab") {
+  sources = [
+    "new_tab/new_tab_ui.cc",
+    "new_tab/new_tab_ui.h",
+  ]
+  public_deps = [ "//content/public/browser" ]
+  deps = [
+    ":new_tab_resources",
+    ":views",
+    "//chrome/browser/ui/browser_window",
+    "//ui/webui",
+  ]
+}
+
+# Shared by browser commands and bookmark actions. Keep layout control separate
+# from the palette's autocomplete and extension dependencies.
+source_set("layout_controller") {
+  sources = [
+    "views/layout_controller.cc",
+    "views/layout_controller.h",
+  ]
+  public_deps = [
+    ":layout",
+    "//base",
+    "//chrome/browser/ui/tabs:tab_strip_model_observer",
+    "//ui/base/unowned_user_data",
+    "//ui/compositor",
+    "//ui/gfx/geometry",
+    "//ui/views",
+  ]
+  deps = [
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/tabs:tab_strip",
+    "//components/tabs:public",
+    "//content/public/browser",
+    "//ui/base",
+    "//ui/views/controls/webview",
+  ]
+}
+
 # Also includes headers from //chrome/browser/ui itself (BrowserView, the
 # omnibox, singleton tabs and the shortcut service), which depends on this
 # target and so cannot be listed here.
@@ -132,10 +189,10 @@ source_set("views") {
   sources = [
     "views/apply_keys.cc",
     "views/apply_keys.h",
+    "views/command_palette.cc",
+    "views/command_palette.h",
     "views/execute_command.cc",
     "views/execute_command.h",
-    "views/layout_controller.cc",
-    "views/layout_controller.h",
     "views/popup.cc",
     "views/popup.h",
     "views/window_controller.cc",
@@ -143,8 +200,7 @@ source_set("views") {
   ]
   public_deps = [
     ":config",
-    ":layout",
-    "//chrome/browser/ui/tabs:tab_strip_model_observer",
+    ":layout_controller",
     "//ui/base",
     "//ui/base/unowned_user_data",
     "//ui/compositor",
@@ -154,15 +210,18 @@ source_set("views") {
     ":commands",
     ":settings",
     "//chrome/app:command_ids",
+    "//chrome/browser/autocomplete",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/location_bar",
+    "//chrome/browser/ui/navigator",
     "//chrome/browser/ui/tabs:tab_strip",
+    "//chrome/browser/ui/toolbar",
     "//components/tabs:public",
     "//content/public/browser",
     "//ui/compositor_extra",
     "//ui/events:events_base",
     "//ui/gfx/geometry",
-    "//ui/views/controls/webview",
     "//url",
   ]
 }

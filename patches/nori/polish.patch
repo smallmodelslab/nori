@@ -1,0 +1,1503 @@
+--- a/chrome/app/chrome_command_ids.h
++++ b/chrome/app/chrome_command_ids.h
+@@ -128,9 +128,11 @@
+ #define IDC_NORI_FOCUS_RIGHT            34121
+ #define IDC_NORI_FOCUS_UP               34122
+ #define IDC_NORI_FOCUS_DOWN             34123
+-#define IDC_NORI_TOGGLE_FULL_WIDTH      34124
++#define IDC_NORI_MAXIMIZE      34124
+ #define IDC_NORI_POPUP                  34125
+ #define IDC_NORI_SETTINGS               34126
++#define IDC_NORI_SPLIT_RIGHT            34127
++#define IDC_NORI_SPLIT_DOWN             34128
+ 
+ // Tab group Commands
+ #define IDC_ADD_NEW_TAB_TO_GROUP      34100
+--- a/chrome/browser/ui/accelerator_table.cc
++++ b/chrome/browser/ui/accelerator_table.cc
+@@ -358,9 +358,22 @@
+                          std::end(kTabGroupAcceleratorMap));
+ #endif  // !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_CHROMEOS)
+ 
++    const auto bind_nori = [&](ui::KeyboardCode key, int modifiers, int id) {
++      std::erase_if(*accelerators, [&](const AcceleratorMapping& mapping) {
++        return mapping.keycode == key && mapping.modifiers == modifiers;
++      });
++      accelerators->push_back({key, modifiers, id});
++    };
+     for (const nori::Command& command : nori::Commands()) {
+-      accelerators->push_back({command.key, command.modifiers, command.id});
++      bind_nori(command.key, command.modifiers, command.id);
+     }
++    bind_nori(ui::VKEY_W, ui::EF_CONTROL_DOWN, IDC_CLOSE_TAB);
++#if BUILDFLAG(IS_MAC)
++    bind_nori(ui::VKEY_B, ui::EF_COMMAND_DOWN, IDC_NORI_POPUP);
++    bind_nori(ui::VKEY_S, ui::EF_COMMAND_DOWN, IDC_SAVE_PAGE);
++#else
++    bind_nori(ui::VKEY_S, ui::EF_CONTROL_DOWN, IDC_SAVE_PAGE);
++#endif
+   }
+ 
+   return *accelerators;
+--- a/chrome/browser/ui/browser_command_controller.cc
++++ b/chrome/browser/ui/browser_command_controller.cc
+@@ -269,12 +269,6 @@
+   return actions::ActionManager::Get().FindAction(action_id, root_action_item);
+ }
+ 
+-bool ShouldToggleVerticalCollapse(PrefService* prefs) {
+-  return prefs->GetBoolean(prefs::kVerticalCollapseShortcut) &&
+-         prefs->GetInteger(prefs::kHeliumLayout) ==
+-             std::to_underlying(HeliumLayoutType::kVertical);
+-}
+-
+ }  // namespace
+ 
+ ///////////////////////////////////////////////////////////////////////////////
+@@ -487,7 +481,7 @@
+     return false;
+   }
+ 
+-  if (nori::FindCommand(command_id)) {
++  if (nori::FindCommand(command_id) || command_id == IDC_CLOSE_TAB) {
+     return true;
+   }
+ 
+@@ -548,8 +542,9 @@
+          command_id == IDC_SELECT_PREVIOUS_TAB ||
+          command_id == IDC_CYCLE_TO_NEXT_TAB ||
+          command_id == IDC_CYCLE_TO_PREV_TAB || command_id == IDC_EXIT ||
+-         command_id == IDC_COPY_OR_INSPECT_SHORTCUT || command_id == IDC_DEV_TOOLS ||
+-         command_id == IDC_DEV_TOOLS_TOGGLE || command_id == IDC_TAB_SEARCH;
++         command_id == IDC_COPY_OR_INSPECT_SHORTCUT ||
++         command_id == IDC_DEV_TOOLS || command_id == IDC_DEV_TOOLS_TOGGLE ||
++         command_id == IDC_TAB_SEARCH;
+ }
+ 
+ void BrowserCommandController::TabStateChanged() {
+@@ -589,7 +584,6 @@
+   UpdateGlicState();
+ }
+ 
+-
+ void BrowserCommandController::FindBarVisibilityChanged() {
+   // Block find command updates in locked fullscreen mode unless the instance is
+   // locked for OnTask (only relevant for non-web browser scenarios).
+@@ -1500,32 +1494,11 @@
+       PrefService* prefs = profile()->GetPrefs();
+       bool copy = prefs->GetBoolean(prefs::kCopyPageUrlShortcut);
+ 
+-      ExecuteCommandWithDisposition(
+-          copy ? IDC_COPY_URL : IDC_DEV_TOOLS_INSPECT, disposition,
+-          std::nullopt, time_stamp);
++      ExecuteCommandWithDisposition(copy ? IDC_COPY_URL : IDC_DEV_TOOLS_INSPECT,
++                                    disposition, std::nullopt, time_stamp);
+       break;
+     }
+     case IDC_CTRL_S_SHORTCUT: {
+-      // In zen mode with VTS, Ctrl+S toggles the side chrome visibility
+-      // instead of collapsing the tab strip.
+-      PrefService* prefs = profile()->GetPrefs();
+-      auto* browser_view = BrowserView::GetBrowserViewForBrowser(browser_);
+-      if (browser_view && browser_view->IsZenModeEnabledForLayout() &&
+-          browser_view->ShouldDrawVerticalTabStrip() &&
+-          ShouldToggleVerticalCollapse(prefs)) {
+-        browser_view->ToggleZenModeSideChrome();
+-        break;
+-      }
+-
+-      if (ShouldToggleVerticalCollapse(prefs)) {
+-        auto* controller =
+-            tabs::VerticalTabStripStateController::From(browser_);
+-        if (controller) {
+-          controller->RequestCollapse(!controller->IsCollapsed());
+-          break;
+-        }
+-      }
+-
+       ExecuteCommandWithDisposition(IDC_SAVE_PAGE, disposition, std::nullopt,
+                                     time_stamp);
+       break;
+@@ -1865,7 +1838,7 @@
+   command_updater_->UpdateCommandEnabled(
+       IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER, true);
+   command_updater_->UpdateCommandEnabled(IDC_TOGGLE_VERTICAL_TABS_COLLAPSE,
+-                                         true);
++                                         false);
+ #if BUILDFLAG(IS_CHROMEOS)
+   command_updater_->UpdateCommandEnabled(IDC_TOGGLE_MULTITASK_MENU, true);
+   command_updater_->UpdateCommandEnabled(IDC_MINIMIZE_WINDOW, true);
+@@ -2407,9 +2380,8 @@
+   const bool copy_url_enabled =
+       IsWebAppOrCustomTab(browser_) ||
+       !sharing_hub::SharingIsDisabledByPolicy(browser_->GetProfile());
+-  const bool inspect_enabled =
+-      DevToolsWindow::AllowDevToolsFor(
+-          profile(), browser_->tab_strip_model()->GetActiveWebContents());
++  const bool inspect_enabled = DevToolsWindow::AllowDevToolsFor(
++      profile(), browser_->tab_strip_model()->GetActiveWebContents());
+ 
+   const bool use_copy_shortcut =
+       profile()->GetPrefs()->GetBoolean(prefs::kCopyPageUrlShortcut);
+@@ -2742,9 +2714,7 @@
+ 
+   const bool can_save_page = CanSavePage(browser_);
+   command_updater_->UpdateCommandEnabled(IDC_SAVE_PAGE, can_save_page);
+-  command_updater_->UpdateCommandEnabled(
+-      IDC_CTRL_S_SHORTCUT,
+-      can_save_page || ShouldToggleVerticalCollapse(profile()->GetPrefs()));
++  command_updater_->UpdateCommandEnabled(IDC_CTRL_S_SHORTCUT, can_save_page);
+ }
+ 
+ void BrowserCommandController::UpdateReloadStopState(bool is_loading,
+@@ -2885,9 +2855,7 @@
+                                          CanCloseOtherTabs(browser_));
+   command_updater_->UpdateCommandEnabled(IDC_MOVE_TAB_TO_NEW_WINDOW,
+                                          CanMoveActiveTabToNewWindow(browser_));
+-  command_updater_->UpdateCommandEnabled(
+-      IDC_NEW_SPLIT_TAB,
+-      browser_->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL);
++  command_updater_->UpdateCommandEnabled(IDC_NEW_SPLIT_TAB, false);
+   command_updater_->UpdateCommandEnabled(IDC_GROUP_UNGROUPED_TABS,
+                                          CanGroupAllUngroupedTabs(browser_));
+ 
+--- a/chrome/app/chromium_strings.grd
++++ b/chrome/app/chromium_strings.grd
+@@ -294,15 +294,15 @@
+         </then>
+         <else>
+           <message name="IDS_PRODUCT_NAME" desc="The Chrome application name" translateable="false">
+-            Chromium
++            Nori
+           </message>
+           <message name="IDS_SHORT_PRODUCT_NAME" desc="The Chrome application short name." translateable="false">
+-            Chromium
++            Nori
+           </message>
+         </else>
+       </if>
+       <message name="IDS_APP_MENU_YOUR_CHROME_HEADER" desc="Header title for the Your Chromium section in the main App Menu">
+-        Your Chromium
++        Your Nori
+       </message>
+       <if expr="is_win">
+         <message name="IDS_SXS_SHORTCUT_NAME" desc="Unused in Chromium builds" translateable="false">
+@@ -312,15 +312,15 @@
+         <message name="IDS_SHORTCUT_NAME_DEV" desc="Unused in Chromium builds" translateable="false">
+         </message>
+         <message name="IDS_PRODUCT_DESCRIPTION" desc="Browser description">
+-          Chromium is a web browser that runs webpages and applications with lightning speed. It's fast, stable, and easy to use. Browse the web more safely with malware and phishing protection built into Chromium.
++          Nori is a web browser that runs webpages and applications with lightning speed. It's fast, stable, and easy to use. Browse the web more safely with malware and phishing protection built into Nori.
+         </message>
+         <message name="IDS_WELCOME_TO_CHROME" desc="Welcoming text announced via screen readers the first time Chrome is launched at the conclusion of installation.">
+-          Welcome to Chromium; new browser window opened
++          Welcome to Nori; new browser window opened
+         </message>
+       </if>
+       <if expr="is_macosx or is_linux">
+         <message name="IDS_FIRST_RUN_DIALOG_WINDOW_TITLE" desc="Window title of First Run dialog on Mac and Linux, displayed in title bar">
+-          Welcome to Chromium
++          Welcome to Nori
+         </message>
+       </if>
+       <if expr="is_linux">
+@@ -364,7 +364,7 @@
+       </if>
+       <if expr="not is_macosx and not is_chromeos">
+         <message name="IDS_TASK_MANAGER_TITLE" desc="The title of the Task Manager window">
+-          Task Manager - Chromium
++          Task Manager - Nori
+         </message>
+       </if>
+       <message name="IDS_TASK_MANAGER_SEARCH_PLACEHOLDER" desc="The placeholder text for the Search bar in the Task Manager window">
+@@ -452,7 +452,7 @@
+           </then>
+           <else>
+             <message name="IDS_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in tabs and popup windows">
+-              <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium
++              <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Nori
+             </message>
+           </else>
+         </if>
+@@ -460,19 +460,19 @@
+       <if expr="is_chromeos">
+         <!-- Browser Window Title Format -->
+         <message name="IDS_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in tabbed browser windows">
+-          Chromium - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
++          Nori - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
+         </message>
+       </if>
+       <if expr="not is_chromeos and not is_macosx">
+         <!-- Captive Portal Browser Window Title Format -->
+         <message name="IDS_CAPTIVE_PORTAL_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in captive portal popup windows">
+-          <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Network Sign-in - Chromium
++          <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Network Sign-in - Nori
+         </message>
+       </if>
+       <if expr="is_chromeos">
+         <!-- Captive Portal Browser Window Title Format -->
+         <message name="IDS_CAPTIVE_PORTAL_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in captive portal popup windows">
+-          Chromium - Network Sign-in - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
++          Nori - Network Sign-in - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
+         </message>
+       </if>
+       <if expr="is_macosx">
+@@ -491,18 +491,18 @@
+         </then>
+         <else>
+           <message name="IDS_ACCESSIBLE_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window">
+-            <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium
++            <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Nori
+           </message>
+         </else>
+       </if>
+       <message name="IDS_ACCESSIBLE_BETA_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window for the beta channel version of the browser">
+-        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium Beta
++        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Nori Beta
+       </message>
+       <message name="IDS_ACCESSIBLE_DEV_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window for the developer (dev) channel version of the browser">
+-        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium Dev
++        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Nori Dev
+       </message>
+       <message name="IDS_ACCESSIBLE_CANARY_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window for the canary (nightly build) channel version of the browser">
+-        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium Canary
++        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Nori Canary
+       </message>
+       <if expr="_is_chrome_for_testing_branded">
+         <then>
+@@ -576,7 +576,7 @@
+         </message>
+       </if>
+       <message name="IDS_ACCNAME_APP" desc="The accessible name for the app menu." translateable="false">
+-        Chromium
++        Nori
+       </message>
+       <!-- Hung Browser Detector -->
+       <if expr="is_win">
+@@ -608,26 +608,26 @@
+       </if>
+       <!-- Default Browser messages -->
+       <message name="IDS_FR_CUSTOMIZE_DEFAULT_BROWSER" desc="Default browser checkbox label">
+-        Make Chromium the default browser
++        Make Nori the default browser
+       </message>
+       <message name="IDS_DEFAULT_BROWSER_CHANGED_MESSAGE" desc="Body of the notification shown when Chrome is no longer the default browser.">
+-        Chromium is no longer your default browser. Make Chromium the default browser?
++        Nori is no longer your default browser. Make Nori the default browser?
+       </message>
+       <if expr="is_win">
+         <message name="IDS_DEFAULT_BROWSER_VISUAL_GUIDED_SETTER_PAGE_TITLE" desc="Title of the default browser visual guided setter page.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_VISUAL_GUIDED_SETTER_HEADER_TITLE" desc="Header text of the default browser visual guided setter.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_VISUAL_GUIDED_SETTER_CONTENT_TITLE" desc="Content title of the default browser visual guided setter.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_VISUAL_GUIDED_SETTER_CONTENT_DESCRIPTION" desc="Body text of the default browser visual guided setter.">
+-          Keep your passwords, bookmarks, and history perfectly synced across devices by setting Chromium as your default browser.
++          Keep your passwords, bookmarks, and history perfectly synced across devices by setting Nori as your default browser.
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_VISUAL_GUIDED_SETTER_INSTRUCTION_STEP_2" desc="Instruction step 2 of the default browser visual guided setter. $1 is the bold button name.">
+-          Click <ph name="BEGIN_BOLD">&lt;strong&gt;</ph>Yes<ph name="END_BOLD">&lt;/strong&gt;</ph> in the Windows notification to pin Chromium to your taskbar for quick access.
++          Click <ph name="BEGIN_BOLD">&lt;strong&gt;</ph>Yes<ph name="END_BOLD">&lt;/strong&gt;</ph> in the Windows notification to pin Nori to your taskbar for quick access.
+         </message>
+       </if>
+       <if expr="use_titlecase">
+@@ -857,41 +857,41 @@
+       </if>
+ 
+       <message name="IDS_DEFAULT_BROWSER_INFOBAR_TEXT" desc="Text to show in an infobar when Chromium is not the current default browser.">
+-        Chromium isn't your default browser
++        Nori isn't your default browser
+       </message>
+       <message name="IDS_DEFAULT_BROWSER_PIN_INFOBAR_TEXT" desc="Text to show in an infobar when Chromium is not the current default browser and can be pinned to the taskbar.">
+-        Set Chromium as your default browser and pin it to your taskbar
++        Set Nori as your default browser and pin it to your taskbar
+       </message>
+       <if expr="not is_android and not is_chromeos">
+         <message name="IDS_DEFAULT_BROWSER_MODAL_TITLE_WITH_SETTINGS_ILLUSTRATION" desc="Title of the default browser modal with settings illustration.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_MODAL_BODY_WITH_SETTINGS_ILLUSTRATION" desc="Body text of the default browser modal with settings illustration.">
+-          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Chromium.
++          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Nori.
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_MODAL_BODY_WITH_SETTINGS_ILLUSTRATION_UNPINNED" desc="Body text of the default browser modal with settings illustration when Chromium is not pinned to the taskbar.">
+-          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Chromium. Chromium will be pinned to your taskbar for quick access.
++          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Nori. Nori will be pinned to your taskbar for quick access.
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_MODAL_TITLE_WITHOUT_SETTINGS_ILLUSTRATION" desc="Title of the default browser modal without settings illustration.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_MODAL_BODY_WITHOUT_SETTINGS_ILLUSTRATION" desc="Body text of the default browser modal without settings illustration.">
+-          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Chromium.
++          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Nori.
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_MODAL_BODY_WITHOUT_SETTINGS_ILLUSTRATION_UNPINNED" desc="Body text of the default browser modal without settings illustration when Chromium is not pinned to the taskbar.">
+-          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Chromium. Chromium will be pinned to your taskbar for quick access.
++          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Nori. Nori will be pinned to your taskbar for quick access.
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_BUBBLE_DIALOG_TITLE" desc="Title of the dialog prompting the user to set Chromium as the default browser.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_BUBBLE_DIALOG_BODY" desc="Main explanatory text in the default browser dialog.">
+-          Get easy access to the features you know, love, and trust by setting Chromium as your default browser.
++          Get easy access to the features you know, love, and trust by setting Nori as your default browser.
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_SUCCESS_TOAST_BODY" desc="Body text of the toast shown when Chromium is successfully set as the default browser.">
+-          Chromium is now your default browser
++          Nori is now your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_BUBBLE_DIALOG_STEPS_PINNED_COMBINED" desc="Numbered instructions. $1, $2 and $3 are the bold button names.">
+-          1. Click <ph name="BUTTON_LABEL">$1<ex>Open settings</ex></ph> below&#xA;2. Click <ph name="BUTTON_2">$2<ex>Set default</ex></ph> in your Windows settings&#xA;3. Click <ph name="BUTTON_3">$3<ex>Yes</ex></ph> in the Windows notification to pin Chromium to your taskbar for quick access
++          1. Click <ph name="BUTTON_LABEL">$1<ex>Open settings</ex></ph> below&#xA;2. Click <ph name="BUTTON_2">$2<ex>Set default</ex></ph> in your Windows settings&#xA;3. Click <ph name="BUTTON_3">$3<ex>Yes</ex></ph> in the Windows notification to pin Nori to your taskbar for quick access
+         </message>
+       </if>
+       <if expr="is_win or is_macosx">
+@@ -1151,7 +1151,7 @@
+           </then>
+           <else>
+             <message name="IDS_ABOUT" desc="In Title Case: The text label of the About Chrome menu item">
+-              About &amp;Chromium
++              About &amp;Nori
+             </message>
+           </else>
+         </if>
+@@ -1168,7 +1168,7 @@
+           </then>
+           <else>
+             <message name="IDS_ABOUT" desc="The text label of the About Chrome menu item">
+-              About &amp;Chromium
++              About &amp;Nori
+             </message>
+           </else>
+         </if>
+@@ -1178,7 +1178,7 @@
+       </if>
+       <if expr="is_chromeos">
+         <message name="IDS_ABOUT" desc="The text label of the About Chrome menu item">
+-          About &amp;Chromium
++          About &amp;Nori
+         </message>
+         <message name="IDS_RELAUNCH_TO_UPDATE" desc="The text label of the relaunch to update ChromeOS menu item">
+           Relaunch to update &amp;ChromiumOS
+@@ -1187,7 +1187,7 @@
+ 
+       <if expr="is_macosx">
+         <message name="IDS_APP_MENU_PRODUCT_NAME" desc="The application's short name, used for the Mac's application menu, activity monitor, etc. This should be less than 16 characters. Example: Chrome, not Google Chrome." translateable="false">
+-          Chromium
++          Nori
+         </message>
+         <message name="IDS_HELPER_NAME" desc="The helper application's name.  Should contain the Chrome application name (IDS_PRODUCT_NAME). Example: Google Chrome Helper.">
+           Chromium Helper
+@@ -1673,7 +1673,7 @@
+       <!-- Mac First-run dialog messages -->
+       <if expr="is_macosx">
+         <message name="IDS_FIRSTRUN_DLG_MAC_SET_DEFAULT_BROWSER_LABEL" desc="Label for checkbox that sets the default browser">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+       </if>
+ 
+@@ -2668,25 +2668,25 @@
+ 
+         <!-- Default Browser Promo -->
+         <message name="IDS_FRE_DEFAULT_BROWSER_TITLE" desc="Title for the page that prompts user to set Chromium as their default browser in the first run experience.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_FRE_DEFAULT_BROWSER_AND_PINNING_TITLE" desc="Title for the page that prompts user to set Chromium as their default browser and pin to taskbar in the first run experience.">
+-          Use Chromium by default and get it pinned
++          Use Nori by default and get it pinned
+         </message>
+         <message name="IDS_FRE_DEFAULT_BROWSER_SUBTITLE_NEW" desc="Subtitle for the page that prompts user to set Chromium as their default browser in the first run experience.">
+-          Use Chromium anytime you click links in messages, documents, and other apps
++          Use Nori anytime you click links in messages, documents, and other apps
+         </message>
+         <message name="IDS_FRE_DEFAULT_BROWSER_AND_PINNING_SUBTITLE" desc="Subtitle for the page that prompts user to set Chromium as their default browser and pin to taskbar in the first run experience.">
+-          Open links in Chromium from any app. Plus for easy access, it gets pinned to your taskbar.
++          Open links in Nori from any app. Plus for easy access, it gets pinned to your taskbar.
+         </message>
+         <message name="IDS_FRE_DEFAULT_BROWSER_ILLUSTRATION_ALT_TEXT" desc="Alt text for the illustration in the page that prompts user to set Chromium as their default browser.">
+-          Chromium logo inside a computer screen.
++          Nori logo inside a computer screen.
+         </message>
+         <message name="IDS_APP_MENU_TOOLTIP_DEFAULT_PROMPT" desc="The tooltip to show for the browser menu when the default browser prompt is displayed">
+-          Customize and control Chromium. Set Chromium as your default.
++          Customize and control Nori. Set Nori as your default.
+         </message>
+         <message name="IDS_APP_MENU_BUTTON_DEFAULT_PROMPT" desc="Text in the browser menu chip indicating that the user can change their default browser">
+-          Set Chromium as your default
++          Set Nori as your default
+         </message>
+         <message name="IDS_SET_BROWSER_AS_DEFAULT_MENU_ITEM" desc="Menu item that prompts user to set Chromium as their default browser.">
+           Set Chromium as your default browser
+--- a/chrome/browser/ui/helium/helium_layout_state_controller.cc
++++ b/chrome/browser/ui/helium/helium_layout_state_controller.cc
+@@ -61,14 +61,7 @@
+ }
+ 
+ HeliumLayoutType HeliumLayoutStateController::GetBrowserLayout() const {
+-  int layout_value = pref_service_->GetInteger(prefs::kHeliumLayout);
+-
+-  if (layout_value < std::to_underlying(HeliumLayoutType::kClassic) ||
+-      layout_value > std::to_underlying(HeliumLayoutType::kMaxValue)) {
+-    return HeliumLayoutType::kClassic;
+-  }
+-
+-  return static_cast<HeliumLayoutType>(layout_value);
++  return HeliumLayoutType::kVertical;
+ }
+ 
+ base::CallbackListSubscription
+--- a/chrome/browser/ui/webui/chrome_web_ui_configs.cc
++++ b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
+@@ -72,6 +72,7 @@
+ 
+ #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+ #include "chrome/browser/ui/nori/settings/settings_ui.h"
++#include "chrome/browser/ui/nori/new_tab/new_tab_ui.h"
+ #endif
+ 
+ #if BUILDFLAG(ENABLE_WEBUI_NTP)
+@@ -481,6 +482,7 @@
+   map.AddWebUIConfig(std::make_unique<HeliumOnboardingPageConfig>());
+ #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+   map.AddWebUIConfig(std::make_unique<nori::SettingsUIConfig>());
++  map.AddWebUIConfig(std::make_unique<nori::NewTabUIConfig>());
+ #endif
+   map.AddWebUIConfig(std::make_unique<ProfileCustomizationUIConfig>());
+   map.AddWebUIConfig(std::make_unique<ProfilePickerUIConfig>());
+--- a/chrome/chrome_paks.gni
++++ b/chrome/chrome_paks.gni
+@@ -500,8 +500,11 @@
+       ]
+     }
+     if (is_mac || is_linux) {
+-      sources += [ "$root_gen_dir/chrome/browser/ui/nori/settings/nori_settings_resources.pak" ]
+-      deps += [ "//chrome/browser/ui/nori:settings_resources" ]
++      sources += [
++        "$root_gen_dir/chrome/browser/ui/nori/settings/nori_settings_resources.pak",
++        "$root_gen_dir/chrome/browser/ui/nori/new_tab/nori_new_tab_resources.pak",
++      ]
++      deps += [ "//chrome/browser/ui/nori:settings_resources", "//chrome/browser/ui/nori:new_tab_resources" ]
+     }
+ 
+     if (is_win || is_mac || is_linux || is_chromeos || is_android) {
+--- a/components/helium_onboarding/helium_onboarding_strings.grdp
++++ b/components/helium_onboarding/helium_onboarding_strings.grdp
+@@ -1,7 +1,7 @@
+ <grit-part>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_PAGE_TITLE" desc="The title of the Helium setup onboarding page.">
+-  Helium Setup
++  Nori Setup
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_BUTTON_USE_DEFAULTS" desc="Button label that skips detailed setup and applies the default onboarding choices.">
+@@ -28,10 +28,10 @@
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_WELCOME_GREETING" desc="Main greeting on the first onboarding screen.">
+-  Meet Helium
++  Meet Nori
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_WELCOME_BODY" desc="Introductory body text on the first onboarding screen.">
+-  Configure Helium to match your taste and import data from other browsers. Make it feel like home or jump straight to browsing.
++  Your pages fill the window. Split them to the right or below, and find every command with Ctrl+B.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_WELCOME_TERMS" desc="Legal note shown during onboarding. Keep each BEGIN/END placeholder pair around its corresponding link text, but move the pairs as needed for a natural translation.">
+   By continuing, you agree to the <ph name="BEGIN_LINK_PRIVACY">$1</ph>privacy policy<ph name="END_LINK_PRIVACY">$2</ph> and <ph name="BEGIN_LINK_TERMS">$3</ph>terms of use<ph name="END_LINK_TERMS">$4</ph>.
+@@ -44,7 +44,7 @@
+   Ready to browse?
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_FINISH_BODY" desc="Body text on the final onboarding screen.">
+-  The setup is complete, thank you for choosing Helium. Time to enjoy the internet again.
++  The setup is complete, thank you for choosing Nori. Time to enjoy the internet again.
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_TITLE" desc="Title of the onboarding screen for Helium services consent.">
+@@ -146,10 +146,10 @@
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_TITLE" desc="Title of the onboarding screen asking whether Helium should be the default browser.">
+-  Ready to switch to Helium?
++  Ready to switch to Nori?
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_SUBTITLE" desc="Subtitle of the onboarding screen asking whether Helium should be the default browser.">
+-  Better privacy, speed, and comfort. All in one click. Wanna make links open in Helium by default?
++  Better privacy, speed, and comfort. All in one click. Wanna make links open in Nori by default?
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_YES" desc="Label for the option to make Helium the default browser.">
+   Yes
+@@ -158,10 +158,10 @@
+   No
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_YES_DESC" desc="Description for the option to make Helium the default browser.">
+-  Make Helium my default browser.
++  Make Nori my default browser.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_NO_DESC" desc="Description for the option to keep the current default browser.">
+-  Just trying Helium for now.
++  Just trying Nori for now.
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_TITLE" desc="Title of the onboarding screen for importing browser data.">
+--- a/tools/gritsettings/resource_ids.spec
++++ b/tools/gritsettings/resource_ids.spec
+@@ -1804,6 +1804,10 @@
+     "META": {"sizes": {"includes": [10]}},
+     "includes": [10240],
+   },
++  "chrome/browser/ui/nori/new_tab/resources/nori_new_tab_resources.grd": {
++    "META": {"sizes": {"includes": [10]}},
++    "includes": [10250],
++  },
+ 
+   "<(SHARED_INTERMEDIATE_DIR)/THIS_IS_A_PLACEHOLDER.grd": {
+     "META": {"sizes": {"includes": [800]}},
+--- a/chrome/browser/search/search.cc
++++ b/chrome/browser/search/search.cc
+@@ -150,7 +150,7 @@
+ #if BUILDFLAG(IS_ANDROID)
+     const GURL local_url;
+ #else
+-    const GURL local_url(chrome::ChromeUINewTabPageURLAsGURL());
++    const GURL local_url("chrome://nori-newtab/");
+ #endif
+     return NewTabURLDetails(local_url, NEW_TAB_URL_VALID);
+   }
+--- a/chrome/browser/ui/webui/BUILD.gn
++++ b/chrome/browser/ui/webui/BUILD.gn
+@@ -111,7 +111,7 @@
+   }
+ 
+   if (is_mac || is_linux) {
+-    deps += [ "//chrome/browser/ui/nori:settings" ]
++    deps += [ "//chrome/browser/ui/nori:settings", "//chrome/browser/ui/nori:new_tab" ]
+   }
+ 
+   if (!is_android) {
+--- a/chrome/browser/ui/BUILD.gn
++++ b/chrome/browser/ui/BUILD.gn
+@@ -910,6 +910,7 @@
+   ]
+ 
+   allow_circular_includes_from = [
++    "//chrome/browser/ui/nori:views",
+     # page_load_metrics's :impl includes headers from //chrome/browser/ui that
+     # can't be split out yet.
+     "//chrome/browser/page_load_metrics:impl",
+--- a/components/url_formatter/url_formatter.cc
++++ b/components/url_formatter/url_formatter.cc
+@@ -625,18 +625,6 @@
+                                prefix_end, adjustments);
+   }
+ 
+-  if ((format_types & kFormatReplaceChromeProtocol) != 0) {
+-    if (url.SchemeIs(content::kChromeUIScheme)) {
+-      GURL url_;
+-      GURL::Replacements replacements;
+-      replacements.SetSchemeStr(content::kHeliumUIScheme);
+-      url_ = url.ReplaceComponents(replacements);
+-
+-      return FormatUrlWithAdjustments(url_, format_types, unescape_rules,
+-                                      new_parsed, prefix_end, adjustments);
+-    }
+-  }
+-
+   // We handle both valid and invalid URLs (this will give us the spec
+   // regardless of validity).
+   const std::string& spec = url.possibly_invalid_spec();
+--- a/chrome/browser/ui/cocoa/main_menu_builder.mm
++++ b/chrome/browser/ui/cocoa/main_menu_builder.mm
+@@ -136,6 +136,9 @@
+       Item(IDS_FILE_MENU_MAC)
+           .tag(IDC_FILE_MENU)
+           .submenu({
++              Item(IDS_NORI_COMMAND_POPUP)
++                  .command_id(IDC_NORI_POPUP)
++                  .remove_if(is_pwa),
+               Item(IDS_NEW_TAB_MAC)
+                   .command_id(IDC_NEW_TAB)
+                   .remove_if(is_pwa),
+@@ -529,8 +532,10 @@
+               Item(IDS_TAB_CXMENU_NEWTABBELOW)
+                   .command_id(IDC_NEW_TAB_TO_RIGHT)
+                   .set_hidden(true),
+-              Item(IDS_TAB_CXMENU_ADD_TAB_TO_NEW_SPLIT)
+-                  .command_id(IDC_NEW_SPLIT_TAB),
++              Item(IDS_NORI_COMMAND_SPLIT_RIGHT)
++                  .command_id(IDC_NORI_SPLIT_RIGHT),
++              Item(IDS_NORI_COMMAND_SPLIT_DOWN)
++                  .command_id(IDC_NORI_SPLIT_DOWN),
+               Item(IDS_NEXT_TAB_MAC)
+                   .command_id(IDC_CYCLE_TO_NEXT_TAB),
+               Item(IDS_PREV_TAB_MAC)
+@@ -569,8 +574,6 @@
+                   .set_hidden(true),
+               Item(IDS_MOVE_TAB_TO_NEW_WINDOW)
+                   .command_id(IDC_MOVE_TAB_TO_NEW_WINDOW),
+-              Item(IDS_TAB_CXMENU_ADD_TAB_TO_NEW_SPLIT)
+-                  .command_id(IDC_NEW_SPLIT_TAB),
+               Item(IDS_SEARCH_TABS)
+                   .command_id(IDC_TAB_SEARCH),
+               Item().is_separator(),
+--- a/chrome/app/settings_chromium_strings.grdp
++++ b/chrome/app/settings_chromium_strings.grdp
+@@ -4,7 +4,7 @@
+   <!-- Shared across multiple page -->
+   <if expr="not is_chromeos">
+     <message name="IDS_RELAUNCH_CONFIRMATION_DIALOG_TITLE" desc="The title of the modal dialog that we show when users click on relaunch and they have open Incognito windows. The dialog serves to warn the users about losing their Incognito windows if they proceed with the relaunch.">
+-      Relaunch Chromium?
++      Relaunch Nori?
+     </message>
+   </if>
+   <!-- About Page -->
+@@ -19,7 +19,7 @@
+     </then>
+     <else>
+       <message name="IDS_SETTINGS_ABOUT_PROGRAM" desc="Menu title for the About Chromium page.">
+-        About Chromium
++        About Nori
+       </message>
+       <message name="IDS_SETTINGS_GET_HELP_USING_CHROME" desc="Text of the button which takes the user to the Chrome help page.">
+         Get help with Chromium
+@@ -61,22 +61,22 @@
+   <!-- Default Browser Page -->
+   <if expr="not is_chromeos">
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_DEFAULT" desc="The text displayed when Chrome is the default browser">
+-      Chromium is your default browser
++      Nori is your default browser
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_DEFAULT_THANK_YOU" desc="The text displayed when Chromium is the default browser">
+-      Thanks for choosing Chromium as your default browser!
++      Thanks for choosing Nori as your default browser!
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT" desc="Default browser checkbox label">
+-      Make Chromium the default browser
++      Make Nori the default browser
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT_USER_VALUE" desc="The text displayed when Chromium is not the default browser. This string describes the effect (user benefit) of setting a browser as the default.">
+-      You can use Chromium anytime you click links in messages, documents, and other apps
++      You can use Nori anytime you click links in messages, documents, and other apps
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT_AND_PIN" desc="The text of the button to make Chromium the default browser and pin it to the taskbar.">
+-      Make Chromium the default browser and pin to the taskbar
++      Make Nori the default browser and pin to the taskbar
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT_AND_PIN_USER_VALUE" desc="The text of the button to make Chromium the default browser and pin it to the taskbar.">
+-      You can use Chromium anytime you click links in messages, documents, and other apps. It will also be pinned to your taskbar.
++      You can use Nori anytime you click links in messages, documents, and other apps. It will also be pinned to your taskbar.
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_ERROR" desc="The text displayed when Chrome cannot determine or set the default browser">
+       Chromium cannot determine or set the default browser
+--- a/chrome/browser/renderer_context_menu/render_view_context_menu.cc
++++ b/chrome/browser/renderer_context_menu/render_view_context_menu.cc
+@@ -138,7 +138,6 @@
+ #include "chrome/browser/ui/tabs/page_context_eligibility_helper.h"
+ #include "chrome/browser/ui/tabs/public/tab_features.h"
+ #include "chrome/browser/ui/tabs/split_tab_metrics.h"
+-#include "chrome/browser/ui/tabs/split_view_layout_menu_model.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/translate/partial_translate_bubble_model.h"
+ #include "chrome/browser/ui/translate/translate_controller.h"
+@@ -979,47 +978,6 @@
+ #endif
+ }
+ 
+-#if !BUILDFLAG(IS_ANDROID)
+-std::pair<int, const gfx::VectorIcon*> GetOpenLinkInSplitStringAndIcon(
+-    tabs::TabInterface* tab,
+-    BrowserWindowInterface* const browser) {
+-  int string_id = IDS_CONTENT_CONTEXT_OPENLINKSPLITVIEW;
+-  const gfx::VectorIcon* icon = &(
+-      features::IsRoundedIconsEnabled() ? kSplitSceneIcon : kSplitSceneOldIcon);
+-  if (tab && tab->IsSplit()) {
+-    split_tabs::SplitTabData* split_data =
+-        browser->GetTabStripModel()->GetSplitData(tab->GetSplit().value());
+-    switch (split_data->visual_data()->split_layout()) {
+-      case split_tabs::SplitTabLayout::kSideBySide:
+-        if (split_data->ListTabs()[base::i18n::IsRTL() ? 1 : 0] == tab) {
+-          string_id = IDS_CONTENT_CONTEXT_OPENLINKRIGHTVIEW;
+-          icon = &(features::IsRoundedIconsEnabled() ? kSplitSceneRightIcon
+-                                                     : kSplitSceneRightOldIcon);
+-        } else {
+-          string_id = IDS_CONTENT_CONTEXT_OPENLINKLEFTVIEW;
+-          icon = &(features::IsRoundedIconsEnabled() ? kSplitSceneLeftIcon
+-                                                     : kSplitSceneLeftOldIcon);
+-        }
+-        break;
+-      case split_tabs::SplitTabLayout::kStacked:
+-        if (split_data->ListTabs()[0] == tab) {
+-          string_id = IDS_CONTENT_CONTEXT_OPENLINKBOTTOMVIEW;
+-          icon = &(features::IsRoundedIconsEnabled() ? kSplitSceneDownIcon
+-                                                     : kSplitSceneDownOldIcon);
+-        } else {
+-          string_id = IDS_CONTENT_CONTEXT_OPENLINKTOPVIEW;
+-          icon = &(features::IsRoundedIconsEnabled() ? kSplitSceneUpIcon
+-                                                     : kSplitSceneUpOldIcon);
+-        }
+-        break;
+-      default:
+-        NOTREACHED();
+-    }
+-  }
+-  return {string_id, icon};
+-}
+-#endif  // !BUILDFLAG(IS_ANDROID)
+-
+ // Resolves a blink::FrameToken from a renderer process to its corresponding
+ // RenderFrameHost. Handles both same-process (LocalFrameToken) and
+ // cross-process OOPIF (RemoteFrameToken) subframes.
+@@ -1982,43 +1940,7 @@
+                                   : kOpenInNewOldIcon);
+     }
+ 
+-#if !BUILDFLAG(IS_ANDROID)
+-    if (show_open_in_new_tab) {
+-      // Opening a link in split view should also go through the same
+-      // constraints as opening a link in a new tab since a split view tab is a
+-      // new tab that is then joined with the current active tab.
+-      if (IsNormalBrowser()) {
+-        tabs::TabInterface* tab =
+-            tabs::TabInterface::MaybeGetFromContents(GetWebContents());
+-        auto [string_id, icon] =
+-            GetOpenLinkInSplitStringAndIcon(tab, GetBrowser());
+-
+-        if (tabs::kSplitViewHorizontalDirectAccess.Get() &&
+-            !(tab && tab->IsSplit())) {
+-          split_layout_submenu_ = std::make_unique<SplitViewLayoutMenuModel>(
+-              base::BindOnce(&RenderViewContextMenu::OpenLinkInSplitView,
+-                             base::Unretained(this)));
+-          menu_model_.AddSubMenuWithStringIdAndIcon(
+-              IDC_CONTENT_CONTEXT_OPENLINKSPLITVIEW, string_id,
+-              split_layout_submenu_.get(),
+-              ui::ImageModel::FromVectorIcon(*icon, ui::kColorMenuIcon,
+-                                             kTabMenuIconSize));
+-        } else {
+-          menu_model_.AddItemWithStringIdAndIcon(
+-              IDC_CONTENT_CONTEXT_OPENLINKSPLITVIEW, string_id,
+-              ui::ImageModel::FromVectorIcon(*icon, ui::kColorMenuIcon,
+-                                             kTabMenuIconSize));
+-        }
+ 
+-        const int command_index =
+-            menu_model_
+-                .GetIndexOfCommandId(IDC_CONTENT_CONTEXT_OPENLINKSPLITVIEW)
+-                .value();
+-        menu_model_.SetElementIdentifierAt(command_index,
+-                                           kOpenLinkInSplitMenuItem);
+-      }
+-    }
+-#endif
+ 
+     if (params_.link_url.is_valid()) {
+       AppendProtocolHandlerSubMenu();
+--- a/chrome/browser/renderer_context_menu/render_view_context_menu.h
++++ b/chrome/browser/renderer_context_menu/render_view_context_menu.h
+@@ -621,8 +621,6 @@
+   std::unique_ptr<send_tab_to_self::SendTabToSelfContextMenuDelegate>
+       send_tab_to_self_submenu_delegate_;
+ 
+-  std::unique_ptr<ui::SimpleMenuModel> split_layout_submenu_;
+-
+   //  Used for CTR metrics of menu item for opening Glic.
+   bool glic_item_shown_ = false;
+   bool glic_item_executed_ = false;
+--- a/chrome/browser/resources/settings/appearance_page/appearance_page.html.ts
++++ b/chrome/browser/resources/settings/appearance_page/appearance_page.html.ts
+@@ -63,24 +63,11 @@
+         </cr-button>
+       ` : ''}
+     </div>
+-    <div class="cr-row">
+-      <div class="flex cr-padded-text" aria-hidden="true">
+-        $i18n{browserLayout}
+-      </div>
+-      <settings-dropdown-menu id="browserLayout"
+-          label="$i18n{browserLayout}"
+-          pref-key="helium.browser.layout"
+-          .menuOptions="${this.browserLayoutOptions_}">
+-      </settings-dropdown-menu>
+-    </div>
++    <cr-link-row label="Nori settings"
++        @click="${this.onNoriSettingsClick_}">
++    </cr-link-row>
+     <div class="list-frame indented-toggles">
+       <settings-toggle-button class="hr"
+-          ?hidden="${!this.showVerticalSettings_()}"
+-          pref-key="helium.browser.vertical_right_aligned"
+-          label="$i18n{tabStripRightAlign}">
+-      </settings-toggle-button>
+-      <settings-toggle-button class="hr"
+-          ?hidden="${!this.showCenteredLocationBarSetting_()}"
+           pref-key="helium.browser.centered_location_bar"
+           label="$i18n{centeredLocationBar}">
+       </settings-toggle-button>
+@@ -93,23 +80,6 @@
+           label="$i18n{showProgressBar}">
+       </settings-toggle-button>
+     </div>
+-    <settings-toggle-button class="hr"
+-        pref-key="helium.browser.zen_mode"
+-        label="$i18n{browserZenMode}"
+-        sub-label="$i18n{browserZenModeDescription}">
+-    </settings-toggle-button>
+-    <div class="list-frame indented-toggles"
+-        ?hidden="${!this.zenModePref_?.value}">
+-      <settings-toggle-button class="hr"
+-          pref-key="helium.browser.zen_mode_sidebar_pinned"
+-          ?hidden="${!this.showVerticalSettings_()}"
+-          label="$i18n{zenModePinSidebar}">
+-      </settings-toggle-button>
+-      <settings-toggle-button class="hr"
+-          pref-key="helium.browser.zen_mode_top_chrome_pinned"
+-          label="$i18n{zenModePinToolbar}">
+-      </settings-toggle-button>
+-    </div>
+     <div class="hr" ?hidden="${!this.showHr_(
+         this.pageVisibility_.setTheme, this.pageVisibility_.homeButton)}">
+     </div>
+--- a/chrome/browser/resources/settings/appearance_page/appearance_page.ts
++++ b/chrome/browser/resources/settings/appearance_page/appearance_page.ts
+@@ -81,15 +81,6 @@
+   // </if>
+ }
+ 
+-// This must be kept in sync with the HeliumLayoutType enum in
+-// chrome/browser/ui/helium/helium_layout_state_controller.h.
+-enum BrowserLayout {
+-  CLASSIC = 0,
+-  COMPACT = 1,
+-  VERTICAL = 2,
+-  DYNAMIC = 3,
+-}
+-
+ function normalizePageVisibility(
+     visibility: boolean|AppearancePageVisibility|
+     undefined): AppearancePageVisibility {
+@@ -141,7 +132,6 @@
+       defaultZoom_: {type: Number},
+ 
+       defaultFontSizePref_: {type: Object},
+-      browserLayoutPref_: {type: Object},
+       homepageIsNewTabPagePref_: {type: Object},
+       homepagePref_: {type: Object},
+       pinContextualTaskButtonPref_: {type: Object},
+@@ -153,7 +143,6 @@
+       sidePanelIsRightAlignedPref_: {type: Object},
+       themeIdPref_: {type: Object},
+       themePolicyColorPref_: {type: Object},
+-      zenModePref_: {type: Object},
+ 
+       // <if expr="is_linux">
+       themeSystemThemePref_: {type: Object},
+@@ -174,12 +163,10 @@
+       showHoverCardImagesOption_: {type: Boolean},
+       showManagedThemeDialog_: {type: Boolean},
+       glassEffectOptions_: {type: Array},
+-      browserLayoutOptions_: {type: Array},
+       showNativeFrameMaterialsOption_: {type: Boolean},
+       showGlassEffectEnabled_: {type: Boolean},
+       ntpSimplificationBookmarksBarEnabled_: {type: Boolean},
+       bookmarksBarOptions_: {type: Array},
+-      showVerticalTabsExpandOnHoverEnabled_: {type: Boolean},
+       showOrganizerPanelEnabled_: {type: Boolean},
+       showEverythingMenuEnabled_: {type: Boolean},
+       showResetPinnedActionsButton_: {type: Boolean},
+@@ -198,8 +185,6 @@
+   protected accessor defaultZoom_: number = 1.0;
+ 
+   // Mirrored prefs.
+-  protected accessor browserLayoutPref_: PrefObject<number>|undefined =
+-      undefined;
+   protected accessor defaultFontSizePref_: PrefObject<number>|undefined =
+       undefined;
+   protected accessor homepageIsNewTabPagePref_: PrefObject<boolean>|undefined =
+@@ -222,7 +207,6 @@
+   protected accessor themeIdPref_: PrefObject<string>|undefined = undefined;
+   protected accessor themePolicyColorPref_: PrefObject<number>|undefined =
+       undefined;
+-  protected accessor zenModePref_: PrefObject<boolean>|undefined = undefined;
+ 
+   // <if expr="is_linux">
+   protected accessor themeSystemThemePref_: PrefObject<number>|undefined =
+@@ -264,25 +248,6 @@
+     {value: 'true', name: loadTimeData.getString('glassEffectModern')},
+  ];
+ 
+-  protected accessor browserLayoutOptions_: DropdownMenuOptionList = [
+-    {
+-      value: BrowserLayout.CLASSIC,
+-      name: loadTimeData.getString('browserLayoutClassic'),
+-    },
+-    {
+-      value: BrowserLayout.DYNAMIC,
+-      name: loadTimeData.getString('browserLayoutDynamic'),
+-    },
+-    {
+-      value: BrowserLayout.COMPACT,
+-      name: loadTimeData.getString('browserLayoutCompact'),
+-    },
+-    {
+-      value: BrowserLayout.VERTICAL,
+-      name: loadTimeData.getString('browserLayoutVertical'),
+-    },
+-  ];
+-
+   // The values in this array must match the BookmarkBarVisibilityState enum
+   // defined in components/bookmarks/common/bookmark_bar_visibility_state.h.
+   protected accessor bookmarksBarOptions_: DropdownMenuOptionList = [
+@@ -324,8 +289,6 @@
+       loadTimeData.getBoolean('showGlassEffectEnabled');
+   protected accessor ntpSimplificationBookmarksBarEnabled_: boolean =
+       loadTimeData.getBoolean('ntpSimplificationBookmarksBarEnabled');
+-  protected accessor showVerticalTabsExpandOnHoverEnabled_: boolean =
+-      loadTimeData.getBoolean('showVerticalTabsExpandOnHoverEnabled');
+   protected accessor showOrganizerPanelEnabled_: boolean =
+       loadTimeData.getBoolean('showOrganizerPanelEnabled');
+   protected accessor showEverythingMenuEnabled_: boolean =
+@@ -353,7 +316,6 @@
+ 
+     this.mirrorPrefs({
+       'autogenerated.theme.policy.color': 'themePolicyColorPref_',
+-      'helium.browser.layout': 'browserLayoutPref_',
+       'browser.pin_contextual_task_button': 'pinContextualTaskButtonPref_',
+       'browser.pin_split_tab_button': 'pinSplitTabButtonPref_',
+       'browser.show_forward_button': 'showForwardButtonPref_',
+@@ -367,7 +329,6 @@
+       'side_panel.alignment_overrides': 'sidePanelAlignmentOverridesPref_',
+       'side_panel.is_right_aligned': 'sidePanelIsRightAlignedPref_',
+       'toolbar.pinned_actions': 'pinnedActionsPref_',
+-      'helium.browser.zen_mode': 'zenModePref_',
+       'webkit.webprefs.default_font_size': 'defaultFontSizePref_',
+     });
+ 
+@@ -488,6 +449,10 @@
+     this.appearanceBrowserProxy_.openCustomizeChromeToolbarSection();
+   }
+ 
++  protected onNoriSettingsClick_() {
++    window.location.href = 'chrome://nori-settings/';
++  }
++
+   protected onUseDefaultClick_() {
+     if (this.isForcedTheme_) {
+       this.showManagedThemeDialog_ = true;
+@@ -712,20 +677,6 @@
+     this.appearanceBrowserProxy_.recordHoverCardMemoryUsageEnabledChanged(enabled);
+   }
+ 
+-  protected showVerticalTabsExpandOnHoverSetting_(): boolean {
+-    return this.showVerticalTabsExpandOnHoverEnabled_ &&
+-        this.browserLayoutPref_?.value === BrowserLayout.VERTICAL;
+-  }
+-
+-  protected showVerticalSettings_(): boolean {
+-    return this.browserLayoutPref_?.value === BrowserLayout.VERTICAL;
+-  }
+-
+-  protected showCenteredLocationBarSetting_(): boolean {
+-    return this.browserLayoutPref_?.value !== BrowserLayout.COMPACT;
+-  }
+-
+-
+   protected onManagedDialogClose_() {
+     this.showManagedThemeDialog_ = false;
+   }
+--- a/chrome/browser/extensions/BUILD.gn
++++ b/chrome/browser/extensions/BUILD.gn
+@@ -558,6 +558,7 @@
+     "//chrome/browser/ui/dialogs",
+     "//chrome/browser/ui/extensions",
+     "//chrome/browser/ui/navigator",
++    "//chrome/browser/ui/nori:layout_controller",
+     "//chrome/browser/ui/prefs",
+     "//chrome/browser/ui/safety_hub",
+     "//chrome/browser/ui/select_file_policy",
+--- a/chrome/browser/extensions/api/bookmark_manager_private/bookmark_manager_private_api.cc
++++ b/chrome/browser/extensions/api/bookmark_manager_private/bookmark_manager_private_api.cc
+@@ -49,8 +49,8 @@
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+ #include "chrome/browser/ui/navigator/browser_navigator.h"
+ #include "chrome/browser/ui/navigator/browser_navigator_params.h"
++#include "chrome/browser/ui/nori/views/layout_controller.h"
+ #include "chrome/browser/ui/select_file_policy/chrome_select_file_policy.h"
+-#include "chrome/browser/ui/tabs/split_tab_metrics.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/window_sizer/window_sizer.h"
+ #include "chrome/browser/undo/bookmark_undo_service_factory.h"
+@@ -289,8 +289,7 @@
+ 
+ BookmarkManagerPrivateAPI::BookmarkManagerPrivateAPI(
+     content::BrowserContext* browser_context)
+-    : browser_context_(browser_context) {
+-}
++    : browser_context_(browser_context) {}
+ 
+ BookmarkManagerPrivateAPI::~BookmarkManagerPrivateAPI() = default;
+ 
+@@ -771,8 +770,9 @@
+     return RespondNow(Error(bookmarks_errors::kEditBookmarksDisabled));
+   }
+ 
+-  BookmarkUndoServiceFactory::GetForProfile(GetProfile())->undo_manager()->
+-      Undo();
++  BookmarkUndoServiceFactory::GetForProfile(GetProfile())
++      ->undo_manager()
++      ->Undo();
+   return RespondNow(NoArguments());
+ }
+ 
+@@ -782,8 +782,9 @@
+     return RespondNow(Error(bookmarks_errors::kEditBookmarksDisabled));
+   }
+ 
+-  BookmarkUndoServiceFactory::GetForProfile(GetProfile())->undo_manager()->
+-      Redo();
++  BookmarkUndoServiceFactory::GetForProfile(GetProfile())
++      ->undo_manager()
++      ->Redo();
+   return RespondNow(NoArguments());
+ }
+ 
+@@ -825,33 +826,22 @@
+     return RespondNow(Error(std::move(maybe_browser.error())));
+   }
+ 
+-  base::expected<content::WebContents*, std::string> result =
+-      OpenTabHelper::OpenTab(validated_url, *maybe_browser.value(), *this,
+-                             options);
++  base::expected<content::WebContents*, std::string> result;
++  const auto open = [&] {
++    result = OpenTabHelper::OpenTab(validated_url, *maybe_browser.value(),
++                                    *this, options);
++  };
++  auto* layout = nori::LayoutController::From(maybe_browser.value());
++  if (params->params && params->params->split && layout) {
++    options.active = true;
++    layout->OpenWithPlacement(nori::Placement::kSplitRight, open);
++  } else {
++    open();
++  }
+   if (!result.has_value()) {
+     return RespondNow(Error(result.error()));
+   }
+ 
+-  content::WebContents* new_contents = result.value();
+-
+-  if (params->params && params->params->split) {
+-    BrowserWindowInterface* browser =
+-        browser_window_util::GetBrowserForTabContents(*new_contents);
+-    if (browser) {
+-      TabStripModel* tab_strip = browser->GetTabStripModel();
+-      const int new_tab_index = tab_strip->GetIndexOfWebContents(new_contents);
+-      // Handle the situation where the bookmark is opened in a different window
+-      // (happens when opening certain internal pages in incognito mode)
+-      if (new_tab_index == TabStripModel::kNoTab ||
+-          new_tab_index == tab_strip->active_index()) {
+-        return RespondNow(NoArguments());
+-      }
+-      tab_strip->AddToNewSplit(
+-          {new_tab_index}, split_tabs::SplitTabVisualData(),
+-          split_tabs::SplitTabCreatedSource::kExtensionsApi);
+-    }
+-  }
+-
+   return RespondNow(NoArguments());
+ }
+ 
+--- a/chrome/browser/ui/bookmarks/bookmark_utils_desktop.cc
++++ b/chrome/browser/ui/bookmarks/bookmark_utils_desktop.cc
+@@ -35,7 +35,6 @@
+ #include "chrome/browser/ui/simple_message_box.h"
+ #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
+ #include "chrome/browser/ui/tabs/saved_tab_groups/tab_group_menu_utils.h"
+-#include "chrome/browser/ui/tabs/split_tab_metrics.h"
+ #include "chrome/browser/ui/tabs/tab_group_model.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/ui_features.h"
+@@ -48,7 +47,6 @@
+ #include "components/saved_tab_groups/public/saved_tab_group.h"
+ #include "components/saved_tab_groups/public/saved_tab_group_tab.h"
+ #include "components/saved_tab_groups/public/tab_group_sync_service.h"
+-#include "components/split_tabs/split_tab_visual_data.h"
+ #include "components/tab_groups/tab_group_id.h"
+ #include "components/tabs/public/tab_group.h"
+ #include "content/public/browser/navigation_handle.h"
+@@ -289,7 +287,6 @@
+   GetURLsAndFoldersForTabEntries(folder_data, tab_entries, groups_by_index);
+ }
+ 
+-
+ // Open a folder of bookmarks as tabs.
+ void DoOpen(BrowserWindowInterface* browser,
+             std::vector<UrlAndId> url_and_ids_to_open,
+@@ -300,23 +297,12 @@
+             page_load_metrics::NavigationHandleUserData::InitiatorLocation
+                 navigation_type,
+             std::optional<BookmarkLaunchAction> launch_action) {
++  if (add_to_split && url_and_ids_to_open.size() == 1)
++    initial_disposition = WindowOpenDisposition::NEW_SPLIT_VIEW;
+   const auto opened_web_contents = OpenAllHelper(
+       browser, std::move(url_and_ids_to_open), initial_disposition,
+       navigation_type, std::move(launch_action));
+-  if (add_to_split && opened_web_contents.size() == 1) {
+-    TabStripModel* model = browser->tab_strip_model();
+-    auto* const single_web_contents = *(opened_web_contents.begin());
+-    const int opened_web_contents_index =
+-        model->GetIndexOfWebContents(single_web_contents);
+-    // Handle the situation where the bookmark is opened in a different window
+-    // (happens when opening certain internal pages in incognito mode).
+-    if (opened_web_contents_index == TabStripModel::kNoTab) {
+-      return;
+-    }
+-    model->AddToNewSplit(
+-        {opened_web_contents_index}, split_tabs::SplitTabVisualData(),
+-        split_tabs::SplitTabCreatedSource::kBookmarkContextMenu);
+-  } else if (folder_title.has_value()) {
++  if (folder_title.has_value()) {
+     TabStripModel* model = browser->tab_strip_model();
+ 
+     // Figure out which tabs we actually opened in this browser that
+@@ -475,7 +461,6 @@
+                            base::Unretained(profile)));
+ }
+ 
+-
+ bool HasBookmarkURLs(
+     const std::vector<raw_ptr<const BookmarkNode, VectorExperimental>>&
+         selection) {
+@@ -526,7 +511,6 @@
+   }
+ }
+ 
+-
+ std::u16string SuggestUniqueTabGroupName(
+     std::u16string folder_title,
+     const tab_groups::TabGroupSyncService* tab_group_sync_service) {
+--- a/chrome/browser/ui/navigator/BUILD.gn
++++ b/chrome/browser/ui/navigator/BUILD.gn
+@@ -91,8 +91,12 @@
+       "//chrome/browser/ui:status_bubble",
+       "//chrome/browser/ui/browser_ui_controller",
+       "//chrome/browser/ui/browser_window",
++      "//chrome/browser/ui/helium:helium_layout_state_controller",
+       "//chrome/browser/ui/location_bar",
++      "//chrome/browser/ui/nori:layout_controller",
+       "//chrome/browser/ui/tabs:tab_strip",
++      "//chrome/browser/ui/toasts",
++      "//chrome/browser/ui/toasts/api:toasts",
+       "//chrome/browser/ui/web_applications",
+       "//chrome/browser/ui/web_applications:launch_utils",
+       "//chrome/browser/ui/window_feature_controller",
+--- a/chrome/browser/ui/navigator/browser_navigator.cc
++++ b/chrome/browser/ui/navigator/browser_navigator.cc
+@@ -40,10 +40,10 @@
+ #include "chrome/browser/ui/location_bar/location_bar.h"
+ #include "chrome/browser/ui/navigator/browser_navigator_params.h"
+ #include "chrome/browser/ui/navigator/browser_navigator_params_utils.h"
++#include "chrome/browser/ui/nori/views/layout_controller.h"
+ #include "chrome/browser/ui/singleton_tabs.h"
+ #include "chrome/browser/ui/status_bubble.h"
+ #include "chrome/browser/ui/tab_helpers.h"
+-#include "chrome/browser/ui/tabs/split_tab_metrics.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
+ #include "chrome/browser/ui/toasts/api/toast_id.h"
+@@ -64,9 +64,6 @@
+ #include "components/no_state_prefetch/browser/no_state_prefetch_manager.h"
+ #include "components/policy/core/common/policy_pref_names.h"
+ #include "components/prefs/pref_service.h"
+-#include "components/split_tabs/split_tab_id.h"
+-#include "components/split_tabs/split_tab_visual_data.h"
+-#include "components/tabs/public/split_tab_data.h"
+ #include "components/tabs/public/tab_interface.h"
+ #include "content/public/browser/browser_url_handler.h"
+ #include "content/public/browser/navigation_entry.h"
+@@ -498,16 +495,11 @@
+       [[fallthrough]];
+     }
+     case WindowOpenDisposition::NEW_FOREGROUND_TAB:
++    case WindowOpenDisposition::NEW_SPLIT_VIEW:
+     case WindowOpenDisposition::SINGLETON_TAB:
+       params->tabstrip_add_types |= AddTabTypes::ADD_ACTIVE;
+       break;
+ 
+-    case WindowOpenDisposition::NEW_SPLIT_VIEW:
+-      // AddToNewSplit() pairs the new tab with the active tab, so the new
+-      // tab must not be active at insertion time.
+-      params->tabstrip_add_types &= ~AddTabTypes::ADD_ACTIVE;
+-      break;
+-
+     default:
+       break;
+   }
+@@ -1046,38 +1038,6 @@
+         std::move(tab_to_insert), params->tabstrip_index, params->transition,
+         params->tabstrip_add_types, group);
+     MaybeShowZenModeNewTabCreatedToast(*params);
+-
+-    // For NEW_SPLIT_VIEW, pair the new tab with the active tab. The
+-    // "already split" case is handled in
+-    // BrowserWebContentsDelegate::OpenURLFromTab().
+-    if (params->disposition == WindowOpenDisposition::NEW_SPLIT_VIEW &&
+-        contents_to_navigate_or_insert) {
+-      TabStripModel* const tab_strip_model =
+-          params->browser->GetTabStripModel();
+-      tabs::TabInterface* const new_tab =
+-          tabs::TabInterface::MaybeGetFromContents(
+-              contents_to_navigate_or_insert);
+-      const int new_tab_index = tab_strip_model->GetIndexOfTab(new_tab);
+-      tabs::TabInterface* const source_tab =
+-          params->source_contents ? tabs::TabInterface::MaybeGetFromContents(
+-                                        params->source_contents)
+-                                  : nullptr;
+-      if (new_tab_index != TabStripModel::kNoTab &&
+-          (!source_tab || !source_tab->IsSplit())) {
+-        tab_strip_model->AddToNewSplit(
+-            {new_tab_index}, split_tabs::SplitTabVisualData(),
+-            split_tabs::SplitTabCreatedSource::kLinkClick);
+-        // AddToNewSplit() makes the split contiguous and gives the new tab the
+-        // active tab's pinned state and group, moving the new tab next to the
+-        // active tab if it is not already there. In particular, when the
+-        // active tab is pinned, the new (unpinned) tab was inserted after the
+-        // pinned tabs, so after the move `new_tab_index` refers to whichever
+-        // tab was shifted into its old slot, e.g. the pinned tab to the right
+-        // of the split. Activate by tab rather than by index so that tab can
+-        // never be focused instead of the new split tab.
+-        tab_strip_model->ActivateTab(new_tab);
+-      }
+-    }
+   }
+ 
+   if (singleton_index >= 0) {
+@@ -1166,7 +1126,20 @@
+ }  // namespace internal
+ 
+ base::WeakPtr<content::NavigationHandle> Navigate(NavigateParams* params) {
++  CHECK(params);
+   AdditionalParams additional_params;
++  if (params->disposition == WindowOpenDisposition::NEW_SPLIT_VIEW) {
++    params->disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
++    if (auto* layout = params->browser
++                           ? nori::LayoutController::From(params->browser)
++                           : nullptr) {
++      base::WeakPtr<content::NavigationHandle> handle;
++      layout->OpenWithPlacement(nori::Placement::kSplitRight, [&] {
++        handle = internal::NavigateImpl(params, additional_params);
++      });
++      return handle;
++    }
++  }
+   return internal::NavigateImpl(params, additional_params);
+ }
+ 
+--- a/chrome/browser/ui/browser_shortcuts/browser_shortcut_metadata.cc
++++ b/chrome/browser/ui/browser_shortcuts/browser_shortcut_metadata.cc
+@@ -12,7 +12,6 @@
+ #include "base/check.h"
+ #include "build/build_config.h"
+ #include "chrome/app/chrome_command_ids.h"
+-#include "chrome/browser/ui/helium/helium_layout_state_controller.h"
+ #include "chrome/browser/ui/nori/commands/commands.h"
+ #include "chrome/common/pref_names.h"
+ #include "chrome/grit/generated_resources.h"
+@@ -23,12 +22,6 @@
+ 
+ namespace {
+ 
+-bool ShouldUseVerticalCollapseLabel(const PrefService* prefs) {
+-  return prefs && prefs->GetBoolean(prefs::kVerticalCollapseShortcut) &&
+-         prefs->GetInteger(prefs::kHeliumLayout) ==
+-             std::to_underlying(HeliumLayoutType::kVertical);
+-}
+-
+ bool ShouldUseCopyPageUrlLabel(const PrefService* prefs) {
+   return prefs && prefs->GetBoolean(prefs::kCopyPageUrlShortcut);
+ }
+@@ -206,11 +199,8 @@
+     case IDC_OPEN_FILE:
+       return Label(IDS_OPEN_FILE_DIALOG_TITLE);
+     case IDC_SAVE_PAGE:
+-      return Label(IDS_SAVE_PAGE);
+     case IDC_CTRL_S_SHORTCUT:
+-      return Label(ShouldUseVerticalCollapseLabel(prefs)
+-                       ? IDS_SHORTCUT_COMMAND_TOGGLE_VERTICAL_TABS
+-                       : IDS_SAVE_PAGE);
++      return Label(IDS_SAVE_PAGE);
+     case IDC_TOGGLE_VERTICAL_TABS_COLLAPSE:
+       return Label(IDS_SHORTCUT_COMMAND_TOGGLE_VERTICAL_TABS);
+     case IDC_PRINT:
+@@ -310,11 +300,6 @@
+ std::vector<int> GetBrowserShortcutCommandsWithoutDefault(
+     const PrefService* prefs) {
+   std::vector<int> commands;
+-  if (ShouldUseVerticalCollapseLabel(prefs)) {
+-    commands.push_back(IDC_SAVE_PAGE);
+-  }
+-  commands.push_back(IDC_TOGGLE_VERTICAL_TABS_COLLAPSE);
+-
+   commands.push_back(ShouldUseCopyPageUrlLabel(prefs) ? IDC_DEV_TOOLS_INSPECT
+                                                       : IDC_COPY_URL);
+   commands.push_back(IDC_FORCE_PASTE);
+--- a/chrome/browser/ui/views/frame/contents_container_view.cc
++++ b/chrome/browser/ui/views/frame/contents_container_view.cc
+@@ -530,7 +530,10 @@
+     return layouts;
+   }
+ 
+-  gfx::Rect full_contents_bounds = GetContentsBounds();
++  // A proposed layout may be calculated before this view receives its new
++  // bounds. Size the page from the requested geometry, not the previous pane.
++  gfx::Rect full_contents_bounds(gfx::Size(width, height));
++  full_contents_bounds.Inset(GetInsets());
+   gfx::Rect devtools_bounds;
+   // The area contents excluding devtools is drawn (ie |contents_view_|,
+   // |new_tab_footer_view_|, etc).
+--- a/chrome/browser/resources/settings/appearance_page/appearance_behavior_page.html
++++ b/chrome/browser/resources/settings/appearance_page/appearance_behavior_page.html
+@@ -1,12 +1,7 @@
+ <style include="cr-shared-style settings-shared"></style>
+ <settings-section page-title="$i18n{behaviorPageTitle}">
+ 
+-  <settings-toggle-button id="newTabNextToActive"
+-      pref-key="helium.browser.new_tab_next_to_active"
+-      label="$i18n{openNewTabNextToActive}">
+-  </settings-toggle-button>
+-
+-  <settings-toggle-button class="hr" id="tabCyclingMRU"
++  <settings-toggle-button id="tabCyclingMRU"
+       pref-key="helium.browser.mru_tab_cycling"
+       label="$i18n{cycleTabsInMRUOrder}">
+   </settings-toggle-button>
+@@ -21,19 +16,9 @@
+       label="$i18n{copyPageUrlShortcut}">
+   </settings-toggle-button>
+ 
+-  <settings-toggle-button class="hr" id="verticalCollapseShortcut"
+-      pref-key="helium.settings.behavior.vertical_collapse_shortcut"
+-      label="$i18n{verticalCollapseShortcut}">
+-  </settings-toggle-button>
+-
+   <settings-toggle-button class="hr" id="autoPinNewTabGroups"
+       pref-key="auto_pin_new_tab_groups"
+       label="$i18n{autoPinNewTabGroups}">
+   </settings-toggle-button>
+ 
+-  <settings-toggle-button class="hr" id="splitViewDragAndDrop"
+-      pref-key="browser.split_view_drag_and_drop_enabled"
+-      label="$i18n{allowSplitViewDragAndDrop}">
+-  </settings-toggle-button>
+-
+ </settings-section>
+--- a/chrome/browser/ui/webui/settings/settings_localized_strings_provider.cc
++++ b/chrome/browser/ui/webui/settings/settings_localized_strings_provider.cc
+@@ -594,24 +594,12 @@
+       {"lightMode", IDS_NTP_CUSTOMIZE_CHROME_COLOR_SCHEME_MODE_LIGHT_LABEL},
+       {"darkMode", IDS_NTP_CUSTOMIZE_CHROME_COLOR_SCHEME_MODE_DARK_LABEL},
+       {"systemMode", IDS_NTP_CUSTOMIZE_CHROME_COLOR_SCHEME_MODE_SYSTEM_LABEL},
+-      {"openNewTabNextToActive", IDS_SETTINGS_NEW_TAB_NEXT_TO_ACTIVE_BUTTON},
+       {"cycleTabsInMRUOrder", IDS_SETTINGS_CYCLE_TABS_IN_MRU_ORDER},
+       {"roundedFrame", IDS_SETTINGS_ROUNDED_FRAME},
+       {"nativeFrameMaterials", IDS_SETTINGS_NATIVE_FRAME_MATERIALS},
+       {"nativeFrameMaterialsDescription",
+        IDS_SETTINGS_NATIVE_FRAME_MATERIALS_DESCRIPTION},
+-      {"browserLayout", IDS_SETTINGS_BROWSER_LAYOUT},
+-      {"browserLayoutClassic", IDS_SETTINGS_BROWSER_LAYOUT_CLASSIC},
+-      {"browserLayoutDynamic", IDS_SETTINGS_BROWSER_LAYOUT_DYNAMIC},
+-      {"browserLayoutCompact", IDS_SETTINGS_BROWSER_LAYOUT_COMPACT},
+-      {"browserLayoutVertical", IDS_SETTINGS_BROWSER_LAYOUT_VERTICAL},
+-      {"tabStripRightAlign", IDS_SETTINGS_TAB_STRIP_RIGHT_ALIGN},
+-      {"browserZenMode", IDS_SETTINGS_BROWSER_ZEN_MODE},
+-      {"browserZenModeDescription", IDS_SETTINGS_BROWSER_ZEN_MODE_DESCRIPTION},
+-      {"zenModePinSidebar", IDS_SETTINGS_ZEN_PIN_SIDEBAR},
+-      {"zenModePinToolbar", IDS_SETTINGS_ZEN_PIN_TOP_TOOLBAR},
+       {"centeredLocationBar", IDS_SETTINGS_CENTERED_LOCATION_BAR},
+-      {"verticalCollapseShortcut", IDS_SETTINGS_VERTICAL_COLLAPSE_SHORTCUT},
+       {"minimalLocationBar", IDS_SETTINGS_MINIMAL_LOCATION_BAR},
+       {"showProgressBar", IDS_SETTINGS_SHOW_PROGRESS_BAR},
+       {"shiftRightClickContextMenu",
+@@ -631,8 +619,6 @@
+       {"tabScrollAutoShowOnOverflow", IDS_TAB_SCROLL_AUTO_SHOW_ON_OVERFLOW},
+       {"showVerticalTabsExpandOnHover",
+        IDS_SETTINGS_VERTICAL_TABS_EXPAND_ON_HOVER},
+-      {"allowSplitViewDragAndDrop",
+-       IDS_SETTINGS_ALLOW_SPLIT_VIEW_DRAG_AND_DROP},
+       {"showTabGroupsInBookmarksBar",
+        IDS_SETTINGS_SHOW_TAB_GROUPS_IN_BOOKMARKS_BAR},
+       {"autoPinNewTabGroups", IDS_SETTINGS_AUTO_PIN_NEW_TAB_GROUPS_HELIUM},
+--- a/chrome/browser/ui/views/frame/multi_contents_view.cc
++++ b/chrome/browser/ui/views/frame/multi_contents_view.cc
+@@ -453,6 +453,13 @@
+   return start_size / total_size;
+ }
+ 
++void MultiContentsView::OnBoundsChanged(const gfx::Rect& previous_bounds) {
++  views::View::OnBoundsChanged(previous_bounds);
++  if (auto* layout = nori::LayoutController::From(browser_view_->browser())) {
++    layout->SetViewportSize(size());
++  }
++}
++
+ void MultiContentsView::OnThemeChanged() {
+   views::View::OnThemeChanged();
+   UpdateContentsBorderAndOverlay();
+--- a/chrome/browser/ui/views/frame/multi_contents_view.h
++++ b/chrome/browser/ui/views/frame/multi_contents_view.h
+@@ -171,6 +171,7 @@
+   void OnResize(int resize_amount, bool done_resizing) override;
+ 
+   // views::View:
++  void OnBoundsChanged(const gfx::Rect& previous_bounds) override;
+   void OnThemeChanged() override;
+ 
+   void OnFullscreenStateChanged();
+--- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
++++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+@@ -898,6 +898,11 @@
+     const GURL& url = entry->GetURL();
+     const GURL& virtual_url = entry->GetVirtualURL();
+ 
++    // Nori's new-tab page provides its own command and search entry point.
++    if (url.SchemeIs(content::kChromeUIScheme) && url.host() == "nori-newtab") {
++      return false;
++    }
++
+     if (virtual_url.SchemeIs(content::kViewSourceScheme)) {
+       return false;
+     }
+--- a/chrome/browser/ui/views/frame/browser_view.cc
++++ b/chrome/browser/ui/views/frame/browser_view.cc
+@@ -1184,10 +1184,6 @@
+ 
+   GetViewAccessibility().SetRole(ax::mojom::Role::kClient);
+ 
+-  if (GetFocusManager()) {
+-    focus_manager_observation_.Observe(GetFocusManager());
+-  }
+-
+   if (base::FeatureList::IsEnabled(features::kCustomizableBrowserShortcuts)) {
+     browser_shortcut_service_ =
+         browser_shortcuts::BrowserShortcutServiceFactory::GetForProfile(
+@@ -5725,6 +5721,11 @@
+ }
+ 
+ void BrowserView::AddedToWidget() {
++  // FocusManager is only available after attachment. Reattach this observation
++  // even when theme changes reuse an already initialized BrowserView.
++  focus_manager_observation_.Reset();
++  focus_manager_observation_.Observe(GetFocusManager());
++
+   // BrowserView may be added to a widget more than once if the user changes
+   // themes after starting the browser. Do not re-initialize BrowserView in
+   // this case.

@@ -6,6 +6,7 @@
 
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
+#include "chrome/browser/ui/nori/views/command_palette.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -17,6 +18,7 @@
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/gfx/geometry/rounded_corners_f.h"
 #include "ui/views/focus/focus_manager.h"
+#include "ui/views/widget/widget.h"
 
 namespace nori {
 
@@ -53,10 +55,13 @@ bool OmniboxWantsEscape(BrowserWindowInterface* browser) {
 
 }  // namespace
 
+DEFINE_USER_DATA(Popup);
+
 Popup::Popup(BrowserWindowInterface* browser, views::View* top_container)
     : browser_(browser),
       top_container_(top_container),
-      shadow_(top_container, kElevation) {
+      shadow_(top_container, kElevation),
+      scoped_unowned_user_data_(browser->GetUnownedUserDataHost(), *this) {
   // `shadow_` has made the container paint to a layer.
   ui::Layer* layer = top_container_->layer();
   layer->SetFillsBoundsOpaquely(false);
@@ -71,6 +76,8 @@ Popup::Popup(BrowserWindowInterface* browser, views::View* top_container)
 }
 
 Popup::~Popup() {
+  if (palette_)
+    palette_->CloseNow();
   UnregisterEscape();
 }
 
@@ -121,16 +128,18 @@ void Popup::UnregisterEscape() {
   }
 }
 
-void TogglePopup(BrowserWindowInterface* browser) {
-  BrowserView* view = BrowserView::GetBrowserViewForBrowser(browser);
-  if (!view || !view->GetFocusManager()) {
+void Popup::TogglePalette() {
+  if (palette_ && !palette_->IsClosed()) {
+    palette_->Close();
     return;
   }
-  if (Holds(*view->top_container(),
-            view->GetFocusManager()->GetFocusedView())) {
-    FocusPage(browser);
-  } else {
-    view->SetFocusToLocationBar(/*is_user_initiated=*/true);
+  FocusPage(browser_);
+  palette_ = ShowCommandPalette(browser_);
+}
+
+void TogglePopup(BrowserWindowInterface* browser) {
+  if (Popup* popup = Popup::Get(browser->GetUnownedUserDataHost())) {
+    popup->TogglePalette();
   }
 }
 

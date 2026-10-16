@@ -22,7 +22,6 @@ namespace nori {
 
 // Everything config.toml can set, already validated.
 struct Config {
-  double column_width = 0;
   int gap = 0;
   SpringParams horizontal;
   SpringParams vertical;

@@ -11,7 +11,7 @@
 #include <vector>
 
 // A niri-style scrolling layout. Workspaces stack vertically, each holds a
-// horizontal strip of columns, and each column stacks tabs vertically. Every
+// horizontal strip of full-window columns, each containing a split tree. Every
 // function takes a layout by value and returns the next one. The model knows
 // nothing about views, so geometry is plain pixels.
 namespace nori {
@@ -21,13 +21,23 @@ using TabId = int32_t;
 enum class Direction { kLeft, kRight, kUp, kDown };
 
 // Where a new tab goes relative to the focused tab: stacked above or below it
-// in its column, or in a new column to its right.
-enum class Placement { kAbove, kBelow, kRight };
+// in its column, split to the right, or in a new full-window column.
+enum class Placement { kAbove, kBelow, kRight, kSplitRight };
+
+// A leaf is a tab; a branch divides its rectangle between two children.
+// Splitting and closing affect only that leaf and its sibling.
+struct Pane {
+  TabId tab = 0;
+  bool horizontal = true;
+  std::vector<Pane> children;
+
+  bool operator==(const Pane&) const = default;
+};
 
 struct Column {
-  std::vector<TabId> tabs;
-  size_t focused = 0;
-  bool full_width = false;
+  std::optional<Pane> root;
+  TabId focused = 0;
+  bool maximized = false;
 
   bool operator==(const Column&) const = default;
 };
@@ -56,7 +66,6 @@ struct Layout {
 struct Location {
   size_t workspace = 0;
   size_t column = 0;
-  size_t tab = 0;
 
   bool operator==(const Location&) const = default;
 };
@@ -73,25 +82,20 @@ std::vector<TabId> Order(const Layout& layout);
 Layout Insert(Layout layout, TabId tab, Placement placement);
 Layout Remove(Layout layout, TabId tab);
 
-// Left and right move between columns. Up and down move within the column,
-// then on to the workspace above or below.
+// Focus follows the split geometry, then adjacent columns or workspaces.
 Layout Focus(Layout layout, Direction direction);
 Layout FocusTab(Layout layout, TabId tab);
 
-// Toggles the focused column between its own width and the whole window.
-Layout ToggleFullWidth(Layout layout);
+// Maximizes the focused pane, or restores its splits.
+Layout ToggleMaximize(Layout layout);
 
 struct Geometry {
   int width = 0;
   int height = 0;
-  // A column's width as a fraction of the window, unless it is full width.
-  double column_fraction = 0.5;
   int gap = 0;
 
   bool operator==(const Geometry&) const = default;
 };
-
-int ColumnWidth(const Column& column, const Geometry& geometry);
 
 // Scrolls each workspace only as far as needed to show its focused column.
 Layout ScrollIntoView(Layout layout, const Geometry& geometry);

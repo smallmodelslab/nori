@@ -7,6 +7,7 @@
 #include <optional>
 
 #include "chrome/app/chrome_command_ids.h"
+#include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/nori/commands/commands.h"
 #include "chrome/browser/ui/nori/settings/settings_ui.h"
 #include "chrome/browser/ui/nori/views/layout_controller.h"
@@ -36,7 +37,7 @@ std::optional<Direction> FocusDirection(int id) {
 }  // namespace
 
 bool ExecuteCommand(BrowserWindowInterface* browser, int id) {
-  if (!FindCommand(id)) {
+  if (id != IDC_NEW_TAB && !FindCommand(id)) {
     return false;
   }
   if (id == IDC_NORI_POPUP) {
@@ -49,12 +50,21 @@ bool ExecuteCommand(BrowserWindowInterface* browser, int id) {
   }
   LayoutController* layout = LayoutController::From(browser);
   if (!layout) {
-    return true;
+    return id != IDC_NEW_TAB;
   }
-  if (std::optional<Direction> direction = FocusDirection(id)) {
+  const auto new_tab = [browser] {
+    chrome::NewTab(browser, NewTabTypes::kNewTabCommand);
+  };
+  if (id == IDC_NEW_TAB) {
+    layout->OpenWithPlacement(Placement::kRight, new_tab);
+  } else if (id == IDC_NORI_SPLIT_RIGHT || id == IDC_NORI_SPLIT_DOWN) {
+    layout->OpenWithPlacement(
+        id == IDC_NORI_SPLIT_RIGHT ? Placement::kSplitRight : Placement::kBelow,
+        new_tab);
+  } else if (std::optional<Direction> direction = FocusDirection(id)) {
     layout->Focus(*direction);
-  } else if (id == IDC_NORI_TOGGLE_FULL_WIDTH) {
-    layout->ToggleFullWidth();
+  } else if (id == IDC_NORI_MAXIMIZE) {
+    layout->ToggleMaximize();
   }
   return true;
 }
