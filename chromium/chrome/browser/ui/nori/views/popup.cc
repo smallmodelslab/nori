@@ -7,7 +7,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
 #include "chrome/browser/ui/nori/views/command_palette.h"
-#include "chrome/browser/ui/nori/views/window_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -56,10 +55,13 @@ bool OmniboxWantsEscape(BrowserWindowInterface* browser) {
 
 }  // namespace
 
+DEFINE_USER_DATA(Popup);
+
 Popup::Popup(BrowserWindowInterface* browser, views::View* top_container)
     : browser_(browser),
       top_container_(top_container),
-      shadow_(top_container, kElevation) {
+      shadow_(top_container, kElevation),
+      scoped_unowned_user_data_(browser->GetUnownedUserDataHost(), *this) {
   // `shadow_` has made the container paint to a layer.
   ui::Layer* layer = top_container_->layer();
   layer->SetFillsBoundsOpaquely(false);
@@ -136,9 +138,9 @@ void Popup::TogglePalette() {
 }
 
 void TogglePopup(BrowserWindowInterface* browser) {
-  BrowserView* view = BrowserView::GetBrowserViewForBrowser(browser);
-  if (view && view->nori_controller())
-    view->nori_controller()->popup().TogglePalette();
+  if (Popup* popup = Popup::Get(browser->GetUnownedUserDataHost())) {
+    popup->TogglePalette();
+  }
 }
 
 }  // namespace nori

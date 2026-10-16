@@ -19,9 +19,9 @@ namespace {
 // where W/A/S/D do on a QWERTY keyboard when typing Colemak.
 constexpr auto kCommands = std::to_array<Command>({
     {IDC_NORI_FOCUS_LEFT, IDS_NORI_COMMAND_FOCUS_LEFT, "focus_left",
-     "Focus the column to the left.", ui::VKEY_N, ui::EF_CONTROL_DOWN, true},
+     "Focus the pane or column to the left.", ui::VKEY_N, ui::EF_CONTROL_DOWN, true},
     {IDC_NORI_FOCUS_RIGHT, IDS_NORI_COMMAND_FOCUS_RIGHT, "focus_right",
-     "Focus the column to the right.", ui::VKEY_I, ui::EF_CONTROL_DOWN, true},
+     "Focus the pane or column to the right.", ui::VKEY_I, ui::EF_CONTROL_DOWN, true},
     {IDC_NORI_FOCUS_UP, IDS_NORI_COMMAND_FOCUS_UP, "focus_up",
      "Focus the tab above, or the workspace above from the top tab.",
      ui::VKEY_U, ui::EF_CONTROL_DOWN, true},

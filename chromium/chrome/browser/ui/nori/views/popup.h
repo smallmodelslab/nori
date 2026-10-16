@@ -9,6 +9,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
 #include "ui/base/accelerators/accelerator.h"
+#include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
 #include "ui/views/view.h"
 #include "ui/views/view_observer.h"
 #include "ui/views/view_shadow.h"
@@ -22,15 +23,13 @@ class Widget;
 
 namespace nori {
 
-// The Ctrl+B popup is the browser's own top chrome (omnibox, page info,
-// extension actions) floating in the middle of the window. It is revealed
-// exactly while it holds focus or one of its bubbles is open; BrowserView
-// runs the reveal and its layout places the popup with PopupBounds().
-//
-// This styles `top_container` to float above the page, and closes it on
-// Escape once the omnibox has nothing left to revert.
+// Owns the native command palette and the address/site-controls popup for one
+// window. The latter floats Chromium's own toolbar so omnibox suggestions,
+// site information and extension actions keep their native behavior.
 class Popup : public ui::AcceleratorTarget, public views::ViewObserver {
  public:
+  DECLARE_USER_DATA(Popup);
+
   Popup(BrowserWindowInterface* browser, views::View* top_container);
   Popup(const Popup&) = delete;
   Popup& operator=(const Popup&) = delete;
@@ -57,12 +56,12 @@ class Popup : public ui::AcceleratorTarget, public views::ViewObserver {
   const raw_ptr<views::View> top_container_;
   views::ViewShadow shadow_;
   base::WeakPtr<views::Widget> palette_;
+  ui::ScopedUnownedUserData<Popup> scoped_unowned_user_data_;
   raw_ptr<views::FocusManager> focus_manager_ = nullptr;
   base::ScopedObservation<views::View, views::ViewObserver> observation_{this};
 };
 
-// Opens the popup with the URL selected, or gives focus back to the page if
-// the popup has it, which closes it.
+// Toggles the command palette.
 void TogglePopup(BrowserWindowInterface* browser);
 
 }  // namespace nori

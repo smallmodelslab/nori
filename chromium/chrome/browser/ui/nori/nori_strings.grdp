@@ -2,10 +2,10 @@
 <!-- Nori strings (included from chrome/app/generated_resources.grd). -->
 <grit-part>
   <message name="IDS_NORI_COMMAND_FOCUS_LEFT" desc="Command name shown on the Settings shortcuts page for focusing the column to the left.">
-    Focus column to the left
+    Focus left
   </message>
   <message name="IDS_NORI_COMMAND_FOCUS_RIGHT" desc="Command name shown on the Settings shortcuts page for focusing the column to the right.">
-    Focus column to the right
+    Focus right
   </message>
   <message name="IDS_NORI_COMMAND_FOCUS_UP" desc="Command name shown on the Settings shortcuts page for focusing the tab above, or the workspace above at the top of a column.">
     Focus tab or workspace above
@@ -13,10 +13,10 @@
   <message name="IDS_NORI_COMMAND_FOCUS_DOWN" desc="Command name shown on the Settings shortcuts page for focusing the tab below, or the workspace below at the bottom of a column.">
     Focus tab or workspace below
   </message>
-  <message name="IDS_NORI_COMMAND_MAXIMIZE" desc="Command name shown on the Settings shortcuts page for switching the focused column between its normal width and the full window width.">
+  <message name="IDS_NORI_COMMAND_MAXIMIZE" desc="Command name for maximizing the focused pane and restoring its splits.">
     Maximize or restore pane
   </message>
-  <message name="IDS_NORI_COMMAND_POPUP" desc="Command name shown on the Settings shortcuts page for opening the centered popup with the address and site settings.">
+  <message name="IDS_NORI_COMMAND_POPUP" desc="Command name for opening Nori’s searchable command palette.">
     Open command palette
   </message>
   <message name="IDS_NORI_COMMAND_SETTINGS" desc="Command name shown on the Settings shortcuts page for opening nori's own settings page, which edits its config.toml file.">

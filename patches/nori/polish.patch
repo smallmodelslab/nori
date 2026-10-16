@@ -47,17 +47,6 @@
      return true;
    }
  
---- a/chrome/browser/ui/views/frame/browser_view.h
-+++ b/chrome/browser/ui/views/frame/browser_view.h
-@@ -218,6 +218,8 @@
-   // frame area.
-   ClientFrameElementInfo GetFrameElementInfo() const;
- 
-+  nori::WindowController* nori_controller() const { return nori_.get(); }
-+
-   // Returns the preferred size of the Web App Frame Toolbar. Used for example
-   // to determine the height of the title bar.
-   // Returns an empty size if this browser is not for a web app.
 --- a/chrome/app/chromium_strings.grd
 +++ b/chrome/app/chromium_strings.grd
 @@ -294,15 +294,15 @@

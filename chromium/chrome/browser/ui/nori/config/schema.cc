@@ -91,7 +91,7 @@ std::vector<Setting> BuildSettings() {
   std::vector<Setting> settings;
   settings.push_back(NumberSetting(
       "layout.gaps", SettingType::kInteger, "0", 0, 200,
-      "Space between columns and stacked tabs, in pixels.",
+      "Space between columns and split panes, in pixels.",
       [](Config& config, const Setting&, const SettingValue& value) {
         config.gap = static_cast<int>(std::get<int64_t>(value));
       }));
