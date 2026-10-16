@@ -1364,3 +1364,75 @@
    gfx::Rect devtools_bounds;
    // The area contents excluding devtools is drawn (ie |contents_view_|,
    // |new_tab_footer_view_|, etc).
+--- a/chrome/browser/resources/settings/appearance_page/appearance_behavior_page.html
++++ b/chrome/browser/resources/settings/appearance_page/appearance_behavior_page.html
+@@ -1,12 +1,7 @@
+ <style include="cr-shared-style settings-shared"></style>
+ <settings-section page-title="$i18n{behaviorPageTitle}">
+ 
+-  <settings-toggle-button id="newTabNextToActive"
+-      pref-key="helium.browser.new_tab_next_to_active"
+-      label="$i18n{openNewTabNextToActive}">
+-  </settings-toggle-button>
+-
+-  <settings-toggle-button class="hr" id="tabCyclingMRU"
++  <settings-toggle-button id="tabCyclingMRU"
+       pref-key="helium.browser.mru_tab_cycling"
+       label="$i18n{cycleTabsInMRUOrder}">
+   </settings-toggle-button>
+@@ -21,19 +16,9 @@
+       label="$i18n{copyPageUrlShortcut}">
+   </settings-toggle-button>
+ 
+-  <settings-toggle-button class="hr" id="verticalCollapseShortcut"
+-      pref-key="helium.settings.behavior.vertical_collapse_shortcut"
+-      label="$i18n{verticalCollapseShortcut}">
+-  </settings-toggle-button>
+-
+   <settings-toggle-button class="hr" id="autoPinNewTabGroups"
+       pref-key="auto_pin_new_tab_groups"
+       label="$i18n{autoPinNewTabGroups}">
+   </settings-toggle-button>
+ 
+-  <settings-toggle-button class="hr" id="splitViewDragAndDrop"
+-      pref-key="browser.split_view_drag_and_drop_enabled"
+-      label="$i18n{allowSplitViewDragAndDrop}">
+-  </settings-toggle-button>
+-
+ </settings-section>
+--- a/chrome/browser/ui/webui/settings/settings_localized_strings_provider.cc
++++ b/chrome/browser/ui/webui/settings/settings_localized_strings_provider.cc
+@@ -594,24 +594,12 @@
+       {"lightMode", IDS_NTP_CUSTOMIZE_CHROME_COLOR_SCHEME_MODE_LIGHT_LABEL},
+       {"darkMode", IDS_NTP_CUSTOMIZE_CHROME_COLOR_SCHEME_MODE_DARK_LABEL},
+       {"systemMode", IDS_NTP_CUSTOMIZE_CHROME_COLOR_SCHEME_MODE_SYSTEM_LABEL},
+-      {"openNewTabNextToActive", IDS_SETTINGS_NEW_TAB_NEXT_TO_ACTIVE_BUTTON},
+       {"cycleTabsInMRUOrder", IDS_SETTINGS_CYCLE_TABS_IN_MRU_ORDER},
+       {"roundedFrame", IDS_SETTINGS_ROUNDED_FRAME},
+       {"nativeFrameMaterials", IDS_SETTINGS_NATIVE_FRAME_MATERIALS},
+       {"nativeFrameMaterialsDescription",
+        IDS_SETTINGS_NATIVE_FRAME_MATERIALS_DESCRIPTION},
+-      {"browserLayout", IDS_SETTINGS_BROWSER_LAYOUT},
+-      {"browserLayoutClassic", IDS_SETTINGS_BROWSER_LAYOUT_CLASSIC},
+-      {"browserLayoutDynamic", IDS_SETTINGS_BROWSER_LAYOUT_DYNAMIC},
+-      {"browserLayoutCompact", IDS_SETTINGS_BROWSER_LAYOUT_COMPACT},
+-      {"browserLayoutVertical", IDS_SETTINGS_BROWSER_LAYOUT_VERTICAL},
+-      {"tabStripRightAlign", IDS_SETTINGS_TAB_STRIP_RIGHT_ALIGN},
+-      {"browserZenMode", IDS_SETTINGS_BROWSER_ZEN_MODE},
+-      {"browserZenModeDescription", IDS_SETTINGS_BROWSER_ZEN_MODE_DESCRIPTION},
+-      {"zenModePinSidebar", IDS_SETTINGS_ZEN_PIN_SIDEBAR},
+-      {"zenModePinToolbar", IDS_SETTINGS_ZEN_PIN_TOP_TOOLBAR},
+       {"centeredLocationBar", IDS_SETTINGS_CENTERED_LOCATION_BAR},
+-      {"verticalCollapseShortcut", IDS_SETTINGS_VERTICAL_COLLAPSE_SHORTCUT},
+       {"minimalLocationBar", IDS_SETTINGS_MINIMAL_LOCATION_BAR},
+       {"showProgressBar", IDS_SETTINGS_SHOW_PROGRESS_BAR},
+       {"shiftRightClickContextMenu",
+@@ -631,8 +619,6 @@
+       {"tabScrollAutoShowOnOverflow", IDS_TAB_SCROLL_AUTO_SHOW_ON_OVERFLOW},
+       {"showVerticalTabsExpandOnHover",
+        IDS_SETTINGS_VERTICAL_TABS_EXPAND_ON_HOVER},
+-      {"allowSplitViewDragAndDrop",
+-       IDS_SETTINGS_ALLOW_SPLIT_VIEW_DRAG_AND_DROP},
+       {"showTabGroupsInBookmarksBar",
+        IDS_SETTINGS_SHOW_TAB_GROUPS_IN_BOOKMARKS_BAR},
+       {"autoPinNewTabGroups", IDS_SETTINGS_AUTO_PIN_NEW_TAB_GROUPS_HELIUM},

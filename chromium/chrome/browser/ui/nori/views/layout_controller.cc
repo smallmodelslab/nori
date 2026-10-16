@@ -356,12 +356,20 @@ void LayoutController::OnPeerFocused(views::WebView* view) {
     if (peer.view != view) {
       continue;
     }
+    // Native focus also fires while Chromium transfers the active tab between
+    // views. It must not override the neighbour Nori is about to activate.
+    const std::optional<TabId> active = ActiveTab();
+    if (sync_scheduled_ || syncing_tab_strip_ || tab == active) {
+      return;
+    }
     // Activating moves this page out of the peer that is notifying us.
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE,
         base::BindOnce(
-            [](base::WeakPtr<LayoutController> self, TabId tab) {
-              if (!self) {
+            [](base::WeakPtr<LayoutController> self, TabId tab,
+               std::optional<TabId> active) {
+              if (!self || self->sync_scheduled_ || self->syncing_tab_strip_ ||
+                  self->ActiveTab() != active) {
                 return;
               }
               TabStripModel* model = self->browser_->GetTabStripModel();
@@ -374,7 +382,7 @@ void LayoutController::OnPeerFocused(views::WebView* view) {
                         TabStripUserGestureDetails::GestureType::kMouse));
               }
             },
-            weak_factory_.GetWeakPtr(), tab));
+            weak_factory_.GetWeakPtr(), tab, active));
     return;
   }
 }
@@ -416,8 +424,8 @@ void LayoutController::ScheduleSyncTabStrip() {
 void LayoutController::SyncTabStrip() {
   sync_scheduled_ = false;
   TabStripModel* model = browser_->GetTabStripModel();
+  base::AutoReset<bool> syncing(&syncing_tab_strip_, true);
   {
-    base::AutoReset<bool> syncing(&syncing_tab_strip_, true);
     const std::vector<TabId> order = Order(layout_);
     for (int i = 0; i < static_cast<int>(order.size()); ++i) {
       const int from = model->GetIndexOfTab(tabs::TabHandle(order[i]).Get());
