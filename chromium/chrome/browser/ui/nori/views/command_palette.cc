@@ -67,6 +67,7 @@ struct Entry {
 bool IsObsoleteLayoutCommand(int id) {
   return id == IDC_BROWSER_LAYOUT_CLASSIC || id == IDC_BROWSER_LAYOUT_COMPACT ||
          id == IDC_BROWSER_LAYOUT_VERTICAL || id == IDC_TOGGLE_VERTICAL_TABS ||
+         id == IDC_TOGGLE_VERTICAL_TABS_COLLAPSE ||
          id == IDC_BROWSER_LAYOUT_VERTICAL_RIGHT ||
          id == IDC_BROWSER_LAYOUT_DYNAMIC ||
          id == IDC_TOGGLE_ZEN_MODE_TOP_CHROME_PIN;

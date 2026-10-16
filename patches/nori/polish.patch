@@ -15,7 +15,7 @@
  #define IDC_ADD_NEW_TAB_TO_GROUP      34100
 --- a/chrome/browser/ui/accelerator_table.cc
 +++ b/chrome/browser/ui/accelerator_table.cc
-@@ -358,9 +358,19 @@
+@@ -358,9 +358,22 @@
                           std::end(kTabGroupAcceleratorMap));
  #endif  // !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_CHROMEOS)
  
@@ -32,13 +32,29 @@
 +    bind_nori(ui::VKEY_W, ui::EF_CONTROL_DOWN, IDC_CLOSE_TAB);
 +#if BUILDFLAG(IS_MAC)
 +    bind_nori(ui::VKEY_B, ui::EF_COMMAND_DOWN, IDC_NORI_POPUP);
++    bind_nori(ui::VKEY_S, ui::EF_COMMAND_DOWN, IDC_SAVE_PAGE);
++#else
++    bind_nori(ui::VKEY_S, ui::EF_CONTROL_DOWN, IDC_SAVE_PAGE);
 +#endif
    }
  
    return *accelerators;
 --- a/chrome/browser/ui/browser_command_controller.cc
 +++ b/chrome/browser/ui/browser_command_controller.cc
-@@ -487,7 +487,7 @@
+@@ -269,12 +269,6 @@
+   return actions::ActionManager::Get().FindAction(action_id, root_action_item);
+ }
+ 
+-bool ShouldToggleVerticalCollapse(PrefService* prefs) {
+-  return prefs->GetBoolean(prefs::kVerticalCollapseShortcut) &&
+-         prefs->GetInteger(prefs::kHeliumLayout) ==
+-             std::to_underlying(HeliumLayoutType::kVertical);
+-}
+-
+ }  // namespace
+ 
+ ///////////////////////////////////////////////////////////////////////////////
+@@ -487,7 +481,7 @@
      return false;
    }
  
@@ -47,13 +63,101 @@
      return true;
    }
  
-@@ -2886,8 +2886,7 @@
+@@ -548,8 +542,9 @@
+          command_id == IDC_SELECT_PREVIOUS_TAB ||
+          command_id == IDC_CYCLE_TO_NEXT_TAB ||
+          command_id == IDC_CYCLE_TO_PREV_TAB || command_id == IDC_EXIT ||
+-         command_id == IDC_COPY_OR_INSPECT_SHORTCUT || command_id == IDC_DEV_TOOLS ||
+-         command_id == IDC_DEV_TOOLS_TOGGLE || command_id == IDC_TAB_SEARCH;
++         command_id == IDC_COPY_OR_INSPECT_SHORTCUT ||
++         command_id == IDC_DEV_TOOLS || command_id == IDC_DEV_TOOLS_TOGGLE ||
++         command_id == IDC_TAB_SEARCH;
+ }
+ 
+ void BrowserCommandController::TabStateChanged() {
+@@ -589,7 +584,6 @@
+   UpdateGlicState();
+ }
+ 
+-
+ void BrowserCommandController::FindBarVisibilityChanged() {
+   // Block find command updates in locked fullscreen mode unless the instance is
+   // locked for OnTask (only relevant for non-web browser scenarios).
+@@ -1500,32 +1494,11 @@
+       PrefService* prefs = profile()->GetPrefs();
+       bool copy = prefs->GetBoolean(prefs::kCopyPageUrlShortcut);
+ 
+-      ExecuteCommandWithDisposition(
+-          copy ? IDC_COPY_URL : IDC_DEV_TOOLS_INSPECT, disposition,
+-          std::nullopt, time_stamp);
++      ExecuteCommandWithDisposition(copy ? IDC_COPY_URL : IDC_DEV_TOOLS_INSPECT,
++                                    disposition, std::nullopt, time_stamp);
+       break;
+     }
+     case IDC_CTRL_S_SHORTCUT: {
+-      // In zen mode with VTS, Ctrl+S toggles the side chrome visibility
+-      // instead of collapsing the tab strip.
+-      PrefService* prefs = profile()->GetPrefs();
+-      auto* browser_view = BrowserView::GetBrowserViewForBrowser(browser_);
+-      if (browser_view && browser_view->IsZenModeEnabledForLayout() &&
+-          browser_view->ShouldDrawVerticalTabStrip() &&
+-          ShouldToggleVerticalCollapse(prefs)) {
+-        browser_view->ToggleZenModeSideChrome();
+-        break;
+-      }
+-
+-      if (ShouldToggleVerticalCollapse(prefs)) {
+-        auto* controller =
+-            tabs::VerticalTabStripStateController::From(browser_);
+-        if (controller) {
+-          controller->RequestCollapse(!controller->IsCollapsed());
+-          break;
+-        }
+-      }
+-
+       ExecuteCommandWithDisposition(IDC_SAVE_PAGE, disposition, std::nullopt,
+                                     time_stamp);
+       break;
+@@ -1865,7 +1838,7 @@
+   command_updater_->UpdateCommandEnabled(
+       IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER, true);
+   command_updater_->UpdateCommandEnabled(IDC_TOGGLE_VERTICAL_TABS_COLLAPSE,
+-                                         true);
++                                         false);
+ #if BUILDFLAG(IS_CHROMEOS)
+   command_updater_->UpdateCommandEnabled(IDC_TOGGLE_MULTITASK_MENU, true);
+   command_updater_->UpdateCommandEnabled(IDC_MINIMIZE_WINDOW, true);
+@@ -2407,9 +2380,8 @@
+   const bool copy_url_enabled =
+       IsWebAppOrCustomTab(browser_) ||
+       !sharing_hub::SharingIsDisabledByPolicy(browser_->GetProfile());
+-  const bool inspect_enabled =
+-      DevToolsWindow::AllowDevToolsFor(
+-          profile(), browser_->tab_strip_model()->GetActiveWebContents());
++  const bool inspect_enabled = DevToolsWindow::AllowDevToolsFor(
++      profile(), browser_->tab_strip_model()->GetActiveWebContents());
+ 
+   const bool use_copy_shortcut =
+       profile()->GetPrefs()->GetBoolean(prefs::kCopyPageUrlShortcut);
+@@ -2742,9 +2714,7 @@
+ 
+   const bool can_save_page = CanSavePage(browser_);
+   command_updater_->UpdateCommandEnabled(IDC_SAVE_PAGE, can_save_page);
+-  command_updater_->UpdateCommandEnabled(
+-      IDC_CTRL_S_SHORTCUT,
+-      can_save_page || ShouldToggleVerticalCollapse(profile()->GetPrefs()));
++  command_updater_->UpdateCommandEnabled(IDC_CTRL_S_SHORTCUT, can_save_page);
+ }
+ 
+ void BrowserCommandController::UpdateReloadStopState(bool is_loading,
+@@ -2885,9 +2855,7 @@
+                                          CanCloseOtherTabs(browser_));
    command_updater_->UpdateCommandEnabled(IDC_MOVE_TAB_TO_NEW_WINDOW,
                                           CanMoveActiveTabToNewWindow(browser_));
-   command_updater_->UpdateCommandEnabled(
+-  command_updater_->UpdateCommandEnabled(
 -      IDC_NEW_SPLIT_TAB,
 -      browser_->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL);
-+      IDC_NEW_SPLIT_TAB, false);
++  command_updater_->UpdateCommandEnabled(IDC_NEW_SPLIT_TAB, false);
    command_updater_->UpdateCommandEnabled(IDC_GROUP_UNGROUPED_TABS,
                                           CanGroupAllUngroupedTabs(browser_));
  
@@ -78,6 +182,186 @@
        </message>
        <if expr="is_win">
          <message name="IDS_SXS_SHORTCUT_NAME" desc="Unused in Chromium builds" translateable="false">
+@@ -312,15 +312,15 @@
+         <message name="IDS_SHORTCUT_NAME_DEV" desc="Unused in Chromium builds" translateable="false">
+         </message>
+         <message name="IDS_PRODUCT_DESCRIPTION" desc="Browser description">
+-          Chromium is a web browser that runs webpages and applications with lightning speed. It's fast, stable, and easy to use. Browse the web more safely with malware and phishing protection built into Chromium.
++          Nori is a web browser that runs webpages and applications with lightning speed. It's fast, stable, and easy to use. Browse the web more safely with malware and phishing protection built into Nori.
+         </message>
+         <message name="IDS_WELCOME_TO_CHROME" desc="Welcoming text announced via screen readers the first time Chrome is launched at the conclusion of installation.">
+-          Welcome to Chromium; new browser window opened
++          Welcome to Nori; new browser window opened
+         </message>
+       </if>
+       <if expr="is_macosx or is_linux">
+         <message name="IDS_FIRST_RUN_DIALOG_WINDOW_TITLE" desc="Window title of First Run dialog on Mac and Linux, displayed in title bar">
+-          Welcome to Chromium
++          Welcome to Nori
+         </message>
+       </if>
+       <if expr="is_linux">
+@@ -364,7 +364,7 @@
+       </if>
+       <if expr="not is_macosx and not is_chromeos">
+         <message name="IDS_TASK_MANAGER_TITLE" desc="The title of the Task Manager window">
+-          Task Manager - Chromium
++          Task Manager - Nori
+         </message>
+       </if>
+       <message name="IDS_TASK_MANAGER_SEARCH_PLACEHOLDER" desc="The placeholder text for the Search bar in the Task Manager window">
+@@ -452,7 +452,7 @@
+           </then>
+           <else>
+             <message name="IDS_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in tabs and popup windows">
+-              <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium
++              <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Nori
+             </message>
+           </else>
+         </if>
+@@ -460,19 +460,19 @@
+       <if expr="is_chromeos">
+         <!-- Browser Window Title Format -->
+         <message name="IDS_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in tabbed browser windows">
+-          Chromium - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
++          Nori - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
+         </message>
+       </if>
+       <if expr="not is_chromeos and not is_macosx">
+         <!-- Captive Portal Browser Window Title Format -->
+         <message name="IDS_CAPTIVE_PORTAL_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in captive portal popup windows">
+-          <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Network Sign-in - Chromium
++          <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Network Sign-in - Nori
+         </message>
+       </if>
+       <if expr="is_chromeos">
+         <!-- Captive Portal Browser Window Title Format -->
+         <message name="IDS_CAPTIVE_PORTAL_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for titles displayed in captive portal popup windows">
+-          Chromium - Network Sign-in - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
++          Nori - Network Sign-in - <ph name="PAGE_TITLE">$1<ex>Google</ex></ph>
+         </message>
+       </if>
+       <if expr="is_macosx">
+@@ -491,18 +491,18 @@
+         </then>
+         <else>
+           <message name="IDS_ACCESSIBLE_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window">
+-            <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium
++            <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Nori
+           </message>
+         </else>
+       </if>
+       <message name="IDS_ACCESSIBLE_BETA_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window for the beta channel version of the browser">
+-        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium Beta
++        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Nori Beta
+       </message>
+       <message name="IDS_ACCESSIBLE_DEV_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window for the developer (dev) channel version of the browser">
+-        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium Dev
++        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Nori Dev
+       </message>
+       <message name="IDS_ACCESSIBLE_CANARY_BROWSER_WINDOW_TITLE_FORMAT" desc="The format for the accessible name of a tabbed browser window for the canary (nightly build) channel version of the browser">
+-        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Chromium Canary
++        <ph name="PAGE_TITLE">$1<ex>Google</ex></ph> - Nori Canary
+       </message>
+       <if expr="_is_chrome_for_testing_branded">
+         <then>
+@@ -576,7 +576,7 @@
+         </message>
+       </if>
+       <message name="IDS_ACCNAME_APP" desc="The accessible name for the app menu." translateable="false">
+-        Chromium
++        Nori
+       </message>
+       <!-- Hung Browser Detector -->
+       <if expr="is_win">
+@@ -608,26 +608,26 @@
+       </if>
+       <!-- Default Browser messages -->
+       <message name="IDS_FR_CUSTOMIZE_DEFAULT_BROWSER" desc="Default browser checkbox label">
+-        Make Chromium the default browser
++        Make Nori the default browser
+       </message>
+       <message name="IDS_DEFAULT_BROWSER_CHANGED_MESSAGE" desc="Body of the notification shown when Chrome is no longer the default browser.">
+-        Chromium is no longer your default browser. Make Chromium the default browser?
++        Nori is no longer your default browser. Make Nori the default browser?
+       </message>
+       <if expr="is_win">
+         <message name="IDS_DEFAULT_BROWSER_VISUAL_GUIDED_SETTER_PAGE_TITLE" desc="Title of the default browser visual guided setter page.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_VISUAL_GUIDED_SETTER_HEADER_TITLE" desc="Header text of the default browser visual guided setter.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_VISUAL_GUIDED_SETTER_CONTENT_TITLE" desc="Content title of the default browser visual guided setter.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_VISUAL_GUIDED_SETTER_CONTENT_DESCRIPTION" desc="Body text of the default browser visual guided setter.">
+-          Keep your passwords, bookmarks, and history perfectly synced across devices by setting Chromium as your default browser.
++          Keep your passwords, bookmarks, and history perfectly synced across devices by setting Nori as your default browser.
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_VISUAL_GUIDED_SETTER_INSTRUCTION_STEP_2" desc="Instruction step 2 of the default browser visual guided setter. $1 is the bold button name.">
+-          Click <ph name="BEGIN_BOLD">&lt;strong&gt;</ph>Yes<ph name="END_BOLD">&lt;/strong&gt;</ph> in the Windows notification to pin Chromium to your taskbar for quick access.
++          Click <ph name="BEGIN_BOLD">&lt;strong&gt;</ph>Yes<ph name="END_BOLD">&lt;/strong&gt;</ph> in the Windows notification to pin Nori to your taskbar for quick access.
+         </message>
+       </if>
+       <if expr="use_titlecase">
+@@ -857,41 +857,41 @@
+       </if>
+ 
+       <message name="IDS_DEFAULT_BROWSER_INFOBAR_TEXT" desc="Text to show in an infobar when Chromium is not the current default browser.">
+-        Chromium isn't your default browser
++        Nori isn't your default browser
+       </message>
+       <message name="IDS_DEFAULT_BROWSER_PIN_INFOBAR_TEXT" desc="Text to show in an infobar when Chromium is not the current default browser and can be pinned to the taskbar.">
+-        Set Chromium as your default browser and pin it to your taskbar
++        Set Nori as your default browser and pin it to your taskbar
+       </message>
+       <if expr="not is_android and not is_chromeos">
+         <message name="IDS_DEFAULT_BROWSER_MODAL_TITLE_WITH_SETTINGS_ILLUSTRATION" desc="Title of the default browser modal with settings illustration.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_MODAL_BODY_WITH_SETTINGS_ILLUSTRATION" desc="Body text of the default browser modal with settings illustration.">
+-          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Chromium.
++          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Nori.
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_MODAL_BODY_WITH_SETTINGS_ILLUSTRATION_UNPINNED" desc="Body text of the default browser modal with settings illustration when Chromium is not pinned to the taskbar.">
+-          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Chromium. Chromium will be pinned to your taskbar for quick access.
++          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Nori. Nori will be pinned to your taskbar for quick access.
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_MODAL_TITLE_WITHOUT_SETTINGS_ILLUSTRATION" desc="Title of the default browser modal without settings illustration.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_MODAL_BODY_WITHOUT_SETTINGS_ILLUSTRATION" desc="Body text of the default browser modal without settings illustration.">
+-          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Chromium.
++          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Nori.
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_MODAL_BODY_WITHOUT_SETTINGS_ILLUSTRATION_UNPINNED" desc="Body text of the default browser modal without settings illustration when Chromium is not pinned to the taskbar.">
+-          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Chromium. Chromium will be pinned to your taskbar for quick access.
++          Keep your passwords, bookmarks, and history perfectly synced across devices. Easily access the features you know and love by updating your default browser to Nori. Nori will be pinned to your taskbar for quick access.
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_BUBBLE_DIALOG_TITLE" desc="Title of the dialog prompting the user to set Chromium as the default browser.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_BUBBLE_DIALOG_BODY" desc="Main explanatory text in the default browser dialog.">
+-          Get easy access to the features you know, love, and trust by setting Chromium as your default browser.
++          Get easy access to the features you know, love, and trust by setting Nori as your default browser.
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_SUCCESS_TOAST_BODY" desc="Body text of the toast shown when Chromium is successfully set as the default browser.">
+-          Chromium is now your default browser
++          Nori is now your default browser
+         </message>
+         <message name="IDS_DEFAULT_BROWSER_BUBBLE_DIALOG_STEPS_PINNED_COMBINED" desc="Numbered instructions. $1, $2 and $3 are the bold button names.">
+-          1. Click <ph name="BUTTON_LABEL">$1<ex>Open settings</ex></ph> below&#xA;2. Click <ph name="BUTTON_2">$2<ex>Set default</ex></ph> in your Windows settings&#xA;3. Click <ph name="BUTTON_3">$3<ex>Yes</ex></ph> in the Windows notification to pin Chromium to your taskbar for quick access
++          1. Click <ph name="BUTTON_LABEL">$1<ex>Open settings</ex></ph> below&#xA;2. Click <ph name="BUTTON_2">$2<ex>Set default</ex></ph> in your Windows settings&#xA;3. Click <ph name="BUTTON_3">$3<ex>Yes</ex></ph> in the Windows notification to pin Nori to your taskbar for quick access
+         </message>
+       </if>
+       <if expr="is_win or is_macosx">
 @@ -1151,7 +1151,7 @@
            </then>
            <else>
@@ -105,6 +389,57 @@
          </message>
          <message name="IDS_RELAUNCH_TO_UPDATE" desc="The text label of the relaunch to update ChromeOS menu item">
            Relaunch to update &amp;ChromiumOS
+@@ -1187,7 +1187,7 @@
+ 
+       <if expr="is_macosx">
+         <message name="IDS_APP_MENU_PRODUCT_NAME" desc="The application's short name, used for the Mac's application menu, activity monitor, etc. This should be less than 16 characters. Example: Chrome, not Google Chrome." translateable="false">
+-          Chromium
++          Nori
+         </message>
+         <message name="IDS_HELPER_NAME" desc="The helper application's name.  Should contain the Chrome application name (IDS_PRODUCT_NAME). Example: Google Chrome Helper.">
+           Chromium Helper
+@@ -1673,7 +1673,7 @@
+       <!-- Mac First-run dialog messages -->
+       <if expr="is_macosx">
+         <message name="IDS_FIRSTRUN_DLG_MAC_SET_DEFAULT_BROWSER_LABEL" desc="Label for checkbox that sets the default browser">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+       </if>
+ 
+@@ -2668,25 +2668,25 @@
+ 
+         <!-- Default Browser Promo -->
+         <message name="IDS_FRE_DEFAULT_BROWSER_TITLE" desc="Title for the page that prompts user to set Chromium as their default browser in the first run experience.">
+-          Set Chromium as your default browser
++          Set Nori as your default browser
+         </message>
+         <message name="IDS_FRE_DEFAULT_BROWSER_AND_PINNING_TITLE" desc="Title for the page that prompts user to set Chromium as their default browser and pin to taskbar in the first run experience.">
+-          Use Chromium by default and get it pinned
++          Use Nori by default and get it pinned
+         </message>
+         <message name="IDS_FRE_DEFAULT_BROWSER_SUBTITLE_NEW" desc="Subtitle for the page that prompts user to set Chromium as their default browser in the first run experience.">
+-          Use Chromium anytime you click links in messages, documents, and other apps
++          Use Nori anytime you click links in messages, documents, and other apps
+         </message>
+         <message name="IDS_FRE_DEFAULT_BROWSER_AND_PINNING_SUBTITLE" desc="Subtitle for the page that prompts user to set Chromium as their default browser and pin to taskbar in the first run experience.">
+-          Open links in Chromium from any app. Plus for easy access, it gets pinned to your taskbar.
++          Open links in Nori from any app. Plus for easy access, it gets pinned to your taskbar.
+         </message>
+         <message name="IDS_FRE_DEFAULT_BROWSER_ILLUSTRATION_ALT_TEXT" desc="Alt text for the illustration in the page that prompts user to set Chromium as their default browser.">
+-          Chromium logo inside a computer screen.
++          Nori logo inside a computer screen.
+         </message>
+         <message name="IDS_APP_MENU_TOOLTIP_DEFAULT_PROMPT" desc="The tooltip to show for the browser menu when the default browser prompt is displayed">
+-          Customize and control Chromium. Set Chromium as your default.
++          Customize and control Nori. Set Nori as your default.
+         </message>
+         <message name="IDS_APP_MENU_BUTTON_DEFAULT_PROMPT" desc="Text in the browser menu chip indicating that the user can change their default browser">
+-          Set Chromium as your default
++          Set Nori as your default
+         </message>
+         <message name="IDS_SET_BROWSER_AS_DEFAULT_MENU_ITEM" desc="Menu item that prompts user to set Chromium as their default browser.">
+           Set Chromium as your default browser
 --- a/chrome/browser/ui/helium/helium_layout_state_controller.cc
 +++ b/chrome/browser/ui/helium/helium_layout_state_controller.cc
 @@ -61,14 +61,7 @@
@@ -967,3 +1302,65 @@
    return internal::NavigateImpl(params, additional_params);
  }
  
+--- a/chrome/browser/ui/browser_shortcuts/browser_shortcut_metadata.cc
++++ b/chrome/browser/ui/browser_shortcuts/browser_shortcut_metadata.cc
+@@ -12,7 +12,6 @@
+ #include "base/check.h"
+ #include "build/build_config.h"
+ #include "chrome/app/chrome_command_ids.h"
+-#include "chrome/browser/ui/helium/helium_layout_state_controller.h"
+ #include "chrome/browser/ui/nori/commands/commands.h"
+ #include "chrome/common/pref_names.h"
+ #include "chrome/grit/generated_resources.h"
+@@ -23,12 +22,6 @@
+ 
+ namespace {
+ 
+-bool ShouldUseVerticalCollapseLabel(const PrefService* prefs) {
+-  return prefs && prefs->GetBoolean(prefs::kVerticalCollapseShortcut) &&
+-         prefs->GetInteger(prefs::kHeliumLayout) ==
+-             std::to_underlying(HeliumLayoutType::kVertical);
+-}
+-
+ bool ShouldUseCopyPageUrlLabel(const PrefService* prefs) {
+   return prefs && prefs->GetBoolean(prefs::kCopyPageUrlShortcut);
+ }
+@@ -206,11 +199,8 @@
+     case IDC_OPEN_FILE:
+       return Label(IDS_OPEN_FILE_DIALOG_TITLE);
+     case IDC_SAVE_PAGE:
+-      return Label(IDS_SAVE_PAGE);
+     case IDC_CTRL_S_SHORTCUT:
+-      return Label(ShouldUseVerticalCollapseLabel(prefs)
+-                       ? IDS_SHORTCUT_COMMAND_TOGGLE_VERTICAL_TABS
+-                       : IDS_SAVE_PAGE);
++      return Label(IDS_SAVE_PAGE);
+     case IDC_TOGGLE_VERTICAL_TABS_COLLAPSE:
+       return Label(IDS_SHORTCUT_COMMAND_TOGGLE_VERTICAL_TABS);
+     case IDC_PRINT:
+@@ -310,11 +300,6 @@
+ std::vector<int> GetBrowserShortcutCommandsWithoutDefault(
+     const PrefService* prefs) {
+   std::vector<int> commands;
+-  if (ShouldUseVerticalCollapseLabel(prefs)) {
+-    commands.push_back(IDC_SAVE_PAGE);
+-  }
+-  commands.push_back(IDC_TOGGLE_VERTICAL_TABS_COLLAPSE);
+-
+   commands.push_back(ShouldUseCopyPageUrlLabel(prefs) ? IDC_DEV_TOOLS_INSPECT
+                                                       : IDC_COPY_URL);
+   commands.push_back(IDC_FORCE_PASTE);
+--- a/chrome/browser/ui/views/frame/contents_container_view.cc
++++ b/chrome/browser/ui/views/frame/contents_container_view.cc
+@@ -530,7 +530,10 @@
+     return layouts;
+   }
+ 
+-  gfx::Rect full_contents_bounds = GetContentsBounds();
++  // A proposed layout may be calculated before this view receives its new
++  // bounds. Size the page from the requested geometry, not the previous pane.
++  gfx::Rect full_contents_bounds(gfx::Size(width, height));
++  full_contents_bounds.Inset(GetInsets());
+   gfx::Rect devtools_bounds;
+   // The area contents excluding devtools is drawn (ie |contents_view_|,
+   // |new_tab_footer_view_|, etc).
