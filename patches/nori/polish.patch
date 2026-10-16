@@ -1476,3 +1476,28 @@
      if (virtual_url.SchemeIs(content::kViewSourceScheme)) {
        return false;
      }
+--- a/chrome/browser/ui/views/frame/browser_view.cc
++++ b/chrome/browser/ui/views/frame/browser_view.cc
+@@ -1184,10 +1184,6 @@
+ 
+   GetViewAccessibility().SetRole(ax::mojom::Role::kClient);
+ 
+-  if (GetFocusManager()) {
+-    focus_manager_observation_.Observe(GetFocusManager());
+-  }
+-
+   if (base::FeatureList::IsEnabled(features::kCustomizableBrowserShortcuts)) {
+     browser_shortcut_service_ =
+         browser_shortcuts::BrowserShortcutServiceFactory::GetForProfile(
+@@ -5725,6 +5721,11 @@
+ }
+ 
+ void BrowserView::AddedToWidget() {
++  // FocusManager is only available after attachment. Reattach this observation
++  // even when theme changes reuse an already initialized BrowserView.
++  focus_manager_observation_.Reset();
++  focus_manager_observation_.Observe(GetFocusManager());
++
+   // BrowserView may be added to a widget more than once if the user changes
+   // themes after starting the browser. Do not re-initialize BrowserView in
+   // this case.
