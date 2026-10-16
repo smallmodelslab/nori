@@ -47,6 +47,16 @@
      return true;
    }
  
+@@ -2886,8 +2886,7 @@
+   command_updater_->UpdateCommandEnabled(IDC_MOVE_TAB_TO_NEW_WINDOW,
+                                          CanMoveActiveTabToNewWindow(browser_));
+   command_updater_->UpdateCommandEnabled(
+-      IDC_NEW_SPLIT_TAB,
+-      browser_->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL);
++      IDC_NEW_SPLIT_TAB, false);
+   command_updater_->UpdateCommandEnabled(IDC_GROUP_UNGROUPED_TABS,
+                                          CanGroupAllUngroupedTabs(browser_));
+ 
 --- a/chrome/app/chromium_strings.grd
 +++ b/chrome/app/chromium_strings.grd
 @@ -294,15 +294,15 @@
@@ -274,7 +284,7 @@
    const std::string& spec = url.possibly_invalid_spec();
 --- a/chrome/browser/ui/cocoa/main_menu_builder.mm
 +++ b/chrome/browser/ui/cocoa/main_menu_builder.mm
-@@ -136,9 +136,18 @@
+@@ -136,6 +136,9 @@
        Item(IDS_FILE_MENU_MAC)
            .tag(IDC_FILE_MENU)
            .submenu({
@@ -284,12 +294,180 @@
                Item(IDS_NEW_TAB_MAC)
                    .command_id(IDC_NEW_TAB)
                    .remove_if(is_pwa),
+@@ -529,8 +532,10 @@
+               Item(IDS_TAB_CXMENU_NEWTABBELOW)
+                   .command_id(IDC_NEW_TAB_TO_RIGHT)
+                   .set_hidden(true),
+-              Item(IDS_TAB_CXMENU_ADD_TAB_TO_NEW_SPLIT)
+-                  .command_id(IDC_NEW_SPLIT_TAB),
 +              Item(IDS_NORI_COMMAND_SPLIT_RIGHT)
-+                  .command_id(IDC_NORI_SPLIT_RIGHT)
-+                  .remove_if(is_pwa),
++                  .command_id(IDC_NORI_SPLIT_RIGHT),
 +              Item(IDS_NORI_COMMAND_SPLIT_DOWN)
-+                  .command_id(IDC_NORI_SPLIT_DOWN)
-+                  .remove_if(is_pwa),
-               Item(IDS_NEW_WINDOW_MAC)
-                   .command_id(IDC_NEW_WINDOW),
-               Item(IDS_NEW_INCOGNITO_WINDOW_MAC)
++                  .command_id(IDC_NORI_SPLIT_DOWN),
+               Item(IDS_NEXT_TAB_MAC)
+                   .command_id(IDC_CYCLE_TO_NEXT_TAB),
+               Item(IDS_PREV_TAB_MAC)
+@@ -569,8 +574,6 @@
+                   .set_hidden(true),
+               Item(IDS_MOVE_TAB_TO_NEW_WINDOW)
+                   .command_id(IDC_MOVE_TAB_TO_NEW_WINDOW),
+-              Item(IDS_TAB_CXMENU_ADD_TAB_TO_NEW_SPLIT)
+-                  .command_id(IDC_NEW_SPLIT_TAB),
+               Item(IDS_SEARCH_TABS)
+                   .command_id(IDC_TAB_SEARCH),
+               Item().is_separator(),
+--- a/chrome/app/settings_chromium_strings.grdp
++++ b/chrome/app/settings_chromium_strings.grdp
+@@ -4,7 +4,7 @@
+   <!-- Shared across multiple page -->
+   <if expr="not is_chromeos">
+     <message name="IDS_RELAUNCH_CONFIRMATION_DIALOG_TITLE" desc="The title of the modal dialog that we show when users click on relaunch and they have open Incognito windows. The dialog serves to warn the users about losing their Incognito windows if they proceed with the relaunch.">
+-      Relaunch Chromium?
++      Relaunch Nori?
+     </message>
+   </if>
+   <!-- About Page -->
+@@ -19,7 +19,7 @@
+     </then>
+     <else>
+       <message name="IDS_SETTINGS_ABOUT_PROGRAM" desc="Menu title for the About Chromium page.">
+-        About Chromium
++        About Nori
+       </message>
+       <message name="IDS_SETTINGS_GET_HELP_USING_CHROME" desc="Text of the button which takes the user to the Chrome help page.">
+         Get help with Chromium
+@@ -61,19 +61,19 @@
+   <!-- Default Browser Page -->
+   <if expr="not is_chromeos">
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_DEFAULT" desc="The text displayed when Chrome is the default browser">
+-      Chromium is your default browser
++      Nori is your default browser
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_DEFAULT_THANK_YOU" desc="The text displayed when Chromium is the default browser">
+-      Thanks for choosing Chromium as your default browser!
++      Thanks for choosing Nori as your default browser!
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT" desc="Default browser checkbox label">
+-      Make Chromium the default browser
++      Make Nori the default browser
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT_USER_VALUE" desc="The text displayed when Chromium is not the default browser. This string describes the effect (user benefit) of setting a browser as the default.">
+       You can use Chromium anytime you click links in messages, documents, and other apps
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT_AND_PIN" desc="The text of the button to make Chromium the default browser and pin it to the taskbar.">
+-      Make Chromium the default browser and pin to the taskbar
++      Make Nori the default browser and pin to the taskbar
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT_AND_PIN_USER_VALUE" desc="The text of the button to make Chromium the default browser and pin it to the taskbar.">
+       You can use Chromium anytime you click links in messages, documents, and other apps. It will also be pinned to your taskbar.
+--- a/chrome/browser/renderer_context_menu/render_view_context_menu.cc
++++ b/chrome/browser/renderer_context_menu/render_view_context_menu.cc
+@@ -138,7 +138,6 @@
+ #include "chrome/browser/ui/tabs/page_context_eligibility_helper.h"
+ #include "chrome/browser/ui/tabs/public/tab_features.h"
+ #include "chrome/browser/ui/tabs/split_tab_metrics.h"
+-#include "chrome/browser/ui/tabs/split_view_layout_menu_model.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/translate/partial_translate_bubble_model.h"
+ #include "chrome/browser/ui/translate/translate_controller.h"
+@@ -979,46 +978,6 @@
+ #endif
+ }
+ 
+-#if !BUILDFLAG(IS_ANDROID)
+-std::pair<int, const gfx::VectorIcon*> GetOpenLinkInSplitStringAndIcon(
+-    tabs::TabInterface* tab,
+-    BrowserWindowInterface* const browser) {
+-  int string_id = IDS_CONTENT_CONTEXT_OPENLINKSPLITVIEW;
+-  const gfx::VectorIcon* icon = &(
+-      features::IsRoundedIconsEnabled() ? kSplitSceneIcon : kSplitSceneOldIcon);
+-  if (tab && tab->IsSplit()) {
+-    split_tabs::SplitTabData* split_data =
+-        browser->GetTabStripModel()->GetSplitData(tab->GetSplit().value());
+-    switch (split_data->visual_data()->split_layout()) {
+-      case split_tabs::SplitTabLayout::kSideBySide:
+-        if (split_data->ListTabs()[base::i18n::IsRTL() ? 1 : 0] == tab) {
+-          string_id = IDS_CONTENT_CONTEXT_OPENLINKRIGHTVIEW;
+-          icon = &(features::IsRoundedIconsEnabled() ? kSplitSceneRightIcon
+-                                                     : kSplitSceneRightOldIcon);
+-        } else {
+-          string_id = IDS_CONTENT_CONTEXT_OPENLINKLEFTVIEW;
+-          icon = &(features::IsRoundedIconsEnabled() ? kSplitSceneLeftIcon
+-                                                     : kSplitSceneLeftOldIcon);
+-        }
+-        break;
+-      case split_tabs::SplitTabLayout::kStacked:
+-        if (split_data->ListTabs()[0] == tab) {
+-          string_id = IDS_CONTENT_CONTEXT_OPENLINKBOTTOMVIEW;
+-          icon = &(features::IsRoundedIconsEnabled() ? kSplitSceneDownIcon
+-                                                     : kSplitSceneDownOldIcon);
+-        } else {
+-          string_id = IDS_CONTENT_CONTEXT_OPENLINKTOPVIEW;
+-          icon = &(features::IsRoundedIconsEnabled() ? kSplitSceneUpIcon
+-                                                     : kSplitSceneUpOldIcon);
+-        }
+-        break;
+-      default:
+-        NOTREACHED();
+-    }
+-  }
+-  return {string_id, icon};
+-}
+-#endif  // !BUILDFLAG(IS_ANDROID)
+ 
+ // Resolves a blink::FrameToken from a renderer process to its corresponding
+ // RenderFrameHost. Handles both same-process (LocalFrameToken) and
+@@ -1982,43 +1941,7 @@
+                                   : kOpenInNewOldIcon);
+     }
+ 
+-#if !BUILDFLAG(IS_ANDROID)
+-    if (show_open_in_new_tab) {
+-      // Opening a link in split view should also go through the same
+-      // constraints as opening a link in a new tab since a split view tab is a
+-      // new tab that is then joined with the current active tab.
+-      if (IsNormalBrowser()) {
+-        tabs::TabInterface* tab =
+-            tabs::TabInterface::MaybeGetFromContents(GetWebContents());
+-        auto [string_id, icon] =
+-            GetOpenLinkInSplitStringAndIcon(tab, GetBrowser());
+-
+-        if (tabs::kSplitViewHorizontalDirectAccess.Get() &&
+-            !(tab && tab->IsSplit())) {
+-          split_layout_submenu_ = std::make_unique<SplitViewLayoutMenuModel>(
+-              base::BindOnce(&RenderViewContextMenu::OpenLinkInSplitView,
+-                             base::Unretained(this)));
+-          menu_model_.AddSubMenuWithStringIdAndIcon(
+-              IDC_CONTENT_CONTEXT_OPENLINKSPLITVIEW, string_id,
+-              split_layout_submenu_.get(),
+-              ui::ImageModel::FromVectorIcon(*icon, ui::kColorMenuIcon,
+-                                             kTabMenuIconSize));
+-        } else {
+-          menu_model_.AddItemWithStringIdAndIcon(
+-              IDC_CONTENT_CONTEXT_OPENLINKSPLITVIEW, string_id,
+-              ui::ImageModel::FromVectorIcon(*icon, ui::kColorMenuIcon,
+-                                             kTabMenuIconSize));
+-        }
+ 
+-        const int command_index =
+-            menu_model_
+-                .GetIndexOfCommandId(IDC_CONTENT_CONTEXT_OPENLINKSPLITVIEW)
+-                .value();
+-        menu_model_.SetElementIdentifierAt(command_index,
+-                                           kOpenLinkInSplitMenuItem);
+-      }
+-    }
+-#endif
+ 
+     if (params_.link_url.is_valid()) {
+       AppendProtocolHandlerSubMenu();
+--- a/chrome/browser/renderer_context_menu/render_view_context_menu.h
++++ b/chrome/browser/renderer_context_menu/render_view_context_menu.h
+@@ -621,7 +621,6 @@
+   std::unique_ptr<send_tab_to_self::SendTabToSelfContextMenuDelegate>
+       send_tab_to_self_submenu_delegate_;
+ 
+-  std::unique_ptr<ui::SimpleMenuModel> split_layout_submenu_;
+ 
+   //  Used for CTR metrics of menu item for opening Glic.
+   bool glic_item_shown_ = false;

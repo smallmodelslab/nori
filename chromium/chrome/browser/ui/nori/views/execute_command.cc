@@ -37,7 +37,7 @@ std::optional<Direction> FocusDirection(int id) {
 }  // namespace
 
 bool ExecuteCommand(BrowserWindowInterface* browser, int id) {
-  if (!FindCommand(id)) {
+  if (id != IDC_NEW_TAB && !FindCommand(id)) {
     return false;
   }
   if (id == IDC_NORI_POPUP) {
@@ -50,12 +50,17 @@ bool ExecuteCommand(BrowserWindowInterface* browser, int id) {
   }
   LayoutController* layout = LayoutController::From(browser);
   if (!layout) {
-    return true;
+    return id != IDC_NEW_TAB;
   }
-  if (id == IDC_NORI_SPLIT_RIGHT || id == IDC_NORI_SPLIT_DOWN) {
+  const auto new_tab = [browser] {
+    chrome::NewTab(browser, NewTabTypes::kNewTabCommand);
+  };
+  if (id == IDC_NEW_TAB) {
+    layout->OpenWithPlacement(Placement::kRight, new_tab);
+  } else if (id == IDC_NORI_SPLIT_RIGHT || id == IDC_NORI_SPLIT_DOWN) {
     layout->OpenWithPlacement(
         id == IDC_NORI_SPLIT_RIGHT ? Placement::kSplitRight : Placement::kBelow,
-        [browser] { chrome::ExecuteCommand(browser, IDC_NEW_TAB); });
+        new_tab);
   } else if (std::optional<Direction> direction = FocusDirection(id)) {
     layout->Focus(*direction);
   } else if (id == IDC_NORI_MAXIMIZE) {
