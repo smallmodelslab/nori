@@ -58,6 +58,7 @@ LayoutController::LayoutController(BrowserWindowInterface* browser,
   if (std::optional<TabId> active = ActiveTab()) {
     layout_ = FocusTab(std::move(layout_), *active);
   }
+  SetViewportSize(host_->size());
 }
 
 LayoutController::~LayoutController() {
@@ -112,16 +113,27 @@ void LayoutController::Release(content::WebContents* contents) {
 void LayoutController::AddChildLayouts(
     const gfx::Size& size,
     views::View* active_container,
-    std::vector<views::ChildLayout>& layouts) {
-  if (size != gfx::Size(geometry_.width, geometry_.height)) {
-    SetGeometry(size);
+    std::vector<views::ChildLayout>& layouts) const {
+  std::vector<Tile> tiles;
+  if (size == gfx::Size(geometry_.width, geometry_.height)) {
+    tiles = CurrentTiles(base::TimeTicks::Now());
+  } else {
+    // Views also asks for minimum and hypothetical sizes. Project those without
+    // changing the live viewport, focus, scroll position, or springs.
+    Geometry geometry = geometry_;
+    geometry.width = size.width();
+    geometry.height = size.height();
+    const Layout projected = ScrollIntoView(layout_, geometry);
+    tiles = Tiles(projected, geometry,
+                  projected.workspaces[projected.focused].scroll,
+                  StackScroll(projected, geometry));
   }
 
   const std::optional<TabId> active = ActiveTab();
   // An active tab that is out of view waits just past the right edge.
   gfx::Rect active_bounds(gfx::Point(size.width(), 0), size);
   std::set<TabId> placed;
-  for (const Tile& tile : CurrentTiles(base::TimeTicks::Now())) {
+  for (const Tile& tile : tiles) {
     if (tile.tab == active) {
       active_bounds = ToRect(tile.bounds);
     } else if (auto it = peers_.find(tile.tab); it != peers_.end()) {
@@ -178,6 +190,11 @@ void LayoutController::OnTabStripModelChanged(
   if (selection.active_tab_changed() && selection.new_tab) {
     insert_anchor_.reset();
     SetLayout(FocusTab(layout_, IdOf(selection.new_tab)));
+    // A native view transfer can queue focus for the previous page. Keep the
+    // new selection authoritative until that handoff has finished.
+    if (!syncing_tab_strip_) {
+      ScheduleSyncTabStrip();
+    }
   } else {
     UpdatePeers();
     Relayout();
@@ -280,7 +297,10 @@ void LayoutController::SetLayout(Layout layout) {
   }
 }
 
-void LayoutController::SetGeometry(const gfx::Size& size) {
+void LayoutController::SetViewportSize(const gfx::Size& size) {
+  if (size == gfx::Size(geometry_.width, geometry_.height)) {
+    return;
+  }
   resize_from_.clear();
   resize_.JumpTo(1);
   geometry_.width = size.width();

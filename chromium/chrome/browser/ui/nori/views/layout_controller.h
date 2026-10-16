@@ -13,7 +13,6 @@
 #include "base/functional/function_ref.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/scoped_observation.h"
 #include "chrome/browser/ui/nori/layout/layout.h"
 #include "chrome/browser/ui/nori/layout/spring.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
@@ -81,10 +80,13 @@ class LayoutController : public TabStripModelObserver,
   // peer still holds it.
   void Release(content::WebContents* contents);
 
+  // Actual host bounds, distinct from hypothetical layout measurements.
+  void SetViewportSize(const gfx::Size& size);
+
   // Lays out `active_container` and the peers within a host of `size`.
   void AddChildLayouts(const gfx::Size& size,
                        views::View* active_container,
-                       std::vector<views::ChildLayout>& layouts);
+                       std::vector<views::ChildLayout>& layouts) const;
 
  private:
   // TabStripModelObserver:
@@ -101,7 +103,6 @@ class LayoutController : public TabStripModelObserver,
   // Replaces the layout, scrolls it into view, and animates the view from
   // where it is now.
   void SetLayout(Layout layout);
-  void SetGeometry(const gfx::Size& size);
   std::vector<Tile> CurrentTiles(base::TimeTicks now) const;
 
   // Gives every visible tab other than the active one a peer.

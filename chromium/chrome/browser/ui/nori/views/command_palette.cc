@@ -328,8 +328,13 @@ class CommandPalette : public views::View, public views::TextfieldController {
     // tab, window, or this palette itself.
     BrowserWindowInterface* browser = browser_;
     const std::u16string query(input_->GetText());
+    const bool navigate = index == matches_.size();
+    const Entry entry = navigate ? Entry{} : entries_[matches_[index]];
+    // Restore focus before dispatching. Closing a still-visible bubble later
+    // can otherwise return focus to the tab the action just switched away from.
+    GetWidget()->Hide();
     GetWidget()->Close();
-    if (index == matches_.size()) {
+    if (navigate) {
       AutocompleteMatch match;
       AutocompleteClassifierFactory::GetForProfile(browser->GetProfile())
           ->Classify(query, false, false, metrics::OmniboxEventProto::OTHER,
@@ -341,7 +346,6 @@ class CommandPalette : public views::View, public views::TextfieldController {
       }
       return;
     }
-    const Entry entry = entries_[matches_[index]];
     if (entry.tab) {
       TabStripModel* tabs = browser->GetTabStripModel();
       for (int i = 0; i < tabs->count(); ++i) {

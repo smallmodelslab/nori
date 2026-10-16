@@ -1436,3 +1436,43 @@
        {"showTabGroupsInBookmarksBar",
         IDS_SETTINGS_SHOW_TAB_GROUPS_IN_BOOKMARKS_BAR},
        {"autoPinNewTabGroups", IDS_SETTINGS_AUTO_PIN_NEW_TAB_GROUPS_HELIUM},
+--- a/chrome/browser/ui/views/frame/multi_contents_view.cc
++++ b/chrome/browser/ui/views/frame/multi_contents_view.cc
+@@ -453,6 +453,13 @@
+   return start_size / total_size;
+ }
+ 
++void MultiContentsView::OnBoundsChanged(const gfx::Rect& previous_bounds) {
++  views::View::OnBoundsChanged(previous_bounds);
++  if (auto* layout = nori::LayoutController::From(browser_view_->browser())) {
++    layout->SetViewportSize(size());
++  }
++}
++
+ void MultiContentsView::OnThemeChanged() {
+   views::View::OnThemeChanged();
+   UpdateContentsBorderAndOverlay();
+--- a/chrome/browser/ui/views/frame/multi_contents_view.h
++++ b/chrome/browser/ui/views/frame/multi_contents_view.h
+@@ -171,6 +171,7 @@
+   void OnResize(int resize_amount, bool done_resizing) override;
+ 
+   // views::View:
++  void OnBoundsChanged(const gfx::Rect& previous_bounds) override;
+   void OnThemeChanged() override;
+ 
+   void OnFullscreenStateChanged();
+--- a/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
++++ b/chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.cc
+@@ -898,6 +898,11 @@
+     const GURL& url = entry->GetURL();
+     const GURL& virtual_url = entry->GetVirtualURL();
+ 
++    // Nori's new-tab page provides its own command and search entry point.
++    if (url.SchemeIs(content::kChromeUIScheme) && url.host() == "nori-newtab") {
++      return false;
++    }
++
+     if (virtual_url.SchemeIs(content::kViewSourceScheme)) {
+       return false;
+     }
