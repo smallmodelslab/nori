@@ -370,7 +370,7 @@
  #include "chrome/browser/ui/tabs/tab_strip_model.h"
  #include "chrome/browser/ui/translate/partial_translate_bubble_model.h"
  #include "chrome/browser/ui/translate/translate_controller.h"
-@@ -979,46 +978,6 @@
+@@ -979,47 +978,6 @@
  #endif
  }
  
@@ -414,10 +414,11 @@
 -  return {string_id, icon};
 -}
 -#endif  // !BUILDFLAG(IS_ANDROID)
- 
+-
  // Resolves a blink::FrameToken from a renderer process to its corresponding
  // RenderFrameHost. Handles both same-process (LocalFrameToken) and
-@@ -1982,43 +1941,7 @@
+ // cross-process OOPIF (RemoteFrameToken) subframes.
+@@ -1982,43 +1940,7 @@
                                    : kOpenInNewOldIcon);
      }
  
@@ -463,11 +464,12 @@
        AppendProtocolHandlerSubMenu();
 --- a/chrome/browser/renderer_context_menu/render_view_context_menu.h
 +++ b/chrome/browser/renderer_context_menu/render_view_context_menu.h
-@@ -621,7 +621,6 @@
+@@ -621,8 +621,6 @@
    std::unique_ptr<send_tab_to_self::SendTabToSelfContextMenuDelegate>
        send_tab_to_self_submenu_delegate_;
  
 -  std::unique_ptr<ui::SimpleMenuModel> split_layout_submenu_;
- 
+-
    //  Used for CTR metrics of menu item for opening Glic.
    bool glic_item_shown_ = false;
+   bool glic_item_executed_ = false;

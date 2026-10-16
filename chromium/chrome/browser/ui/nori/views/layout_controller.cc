@@ -199,14 +199,18 @@ void LayoutController::OnCompositingShuttingDown(ui::Compositor* compositor) {
 }
 
 void LayoutController::Insert(const std::vector<TabId>& tabs) {
-  const Placement placement = placement_override_.value_or(options_.placement);
-
+  TabStripModel* model = browser_->GetTabStripModel();
   Layout layout = layout_;
   const std::optional<TabId> focused = FocusedTab(layout);
   for (TabId tab : tabs) {
     if (insert_anchor_) {
       layout = FocusTab(std::move(layout), *insert_anchor_);
     }
+    const int index = model->GetIndexOfTab(tabs::TabHandle(tab).Get());
+    const bool has_opener =
+        index != TabStripModel::kNoTab && model->GetOpenerOfTabAt(index);
+    const Placement placement = placement_override_.value_or(
+        has_opener ? options_.placement : Placement::kRight);
     layout = nori::Insert(std::move(layout), tab, placement);
     insert_anchor_ = tab;
   }
