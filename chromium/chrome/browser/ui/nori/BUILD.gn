@@ -155,6 +155,32 @@ source_set("new_tab") {
   ]
 }
 
+# Shared by browser commands and bookmark actions. Keep layout control separate
+# from the palette's autocomplete and extension dependencies.
+source_set("layout_controller") {
+  sources = [
+    "views/layout_controller.cc",
+    "views/layout_controller.h",
+  ]
+  public_deps = [
+    ":layout",
+    "//base",
+    "//chrome/browser/ui/tabs:tab_strip_model_observer",
+    "//ui/base/unowned_user_data",
+    "//ui/compositor",
+    "//ui/gfx/geometry",
+    "//ui/views",
+  ]
+  deps = [
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/tabs:tab_strip",
+    "//components/tabs:public",
+    "//content/public/browser",
+    "//ui/views/controls/webview",
+  ]
+}
+
 # Also includes headers from //chrome/browser/ui itself (BrowserView, the
 # omnibox, singleton tabs and the shortcut service), which depends on this
 # target and so cannot be listed here.
@@ -166,8 +192,6 @@ source_set("views") {
     "views/command_palette.h",
     "views/execute_command.cc",
     "views/execute_command.h",
-    "views/layout_controller.cc",
-    "views/layout_controller.h",
     "views/popup.cc",
     "views/popup.h",
     "views/window_controller.cc",
@@ -175,8 +199,7 @@ source_set("views") {
   ]
   public_deps = [
     ":config",
-    ":layout",
-    "//chrome/browser/ui/tabs:tab_strip_model_observer",
+    ":layout_controller",
     "//ui/base",
     "//ui/base/unowned_user_data",
     "//ui/compositor",
@@ -198,7 +221,6 @@ source_set("views") {
     "//ui/compositor_extra",
     "//ui/events:events_base",
     "//ui/gfx/geometry",
-    "//ui/views/controls/webview",
     "//url",
   ]
 }
