@@ -336,7 +336,7 @@
        </message>
        <message name="IDS_SETTINGS_GET_HELP_USING_CHROME" desc="Text of the button which takes the user to the Chrome help page.">
          Get help with Chromium
-@@ -61,19 +61,19 @@
+@@ -61,22 +61,22 @@
    <!-- Default Browser Page -->
    <if expr="not is_chromeos">
      <message name="IDS_SETTINGS_DEFAULT_BROWSER_DEFAULT" desc="The text displayed when Chrome is the default browser">
@@ -352,14 +352,19 @@
 +      Make Nori the default browser
      </message>
      <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT_USER_VALUE" desc="The text displayed when Chromium is not the default browser. This string describes the effect (user benefit) of setting a browser as the default.">
-       You can use Chromium anytime you click links in messages, documents, and other apps
+-      You can use Chromium anytime you click links in messages, documents, and other apps
++      You can use Nori anytime you click links in messages, documents, and other apps
      </message>
      <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT_AND_PIN" desc="The text of the button to make Chromium the default browser and pin it to the taskbar.">
 -      Make Chromium the default browser and pin to the taskbar
 +      Make Nori the default browser and pin to the taskbar
      </message>
      <message name="IDS_SETTINGS_DEFAULT_BROWSER_MAKE_DEFAULT_AND_PIN_USER_VALUE" desc="The text of the button to make Chromium the default browser and pin it to the taskbar.">
-       You can use Chromium anytime you click links in messages, documents, and other apps. It will also be pinned to your taskbar.
+-      You can use Chromium anytime you click links in messages, documents, and other apps. It will also be pinned to your taskbar.
++      You can use Nori anytime you click links in messages, documents, and other apps. It will also be pinned to your taskbar.
+     </message>
+     <message name="IDS_SETTINGS_DEFAULT_BROWSER_ERROR" desc="The text displayed when Chrome cannot determine or set the default browser">
+       Chromium cannot determine or set the default browser
 --- a/chrome/browser/renderer_context_menu/render_view_context_menu.cc
 +++ b/chrome/browser/renderer_context_menu/render_view_context_menu.cc
 @@ -138,7 +138,6 @@
@@ -473,3 +478,204 @@
    //  Used for CTR metrics of menu item for opening Glic.
    bool glic_item_shown_ = false;
    bool glic_item_executed_ = false;
+--- a/chrome/browser/resources/settings/appearance_page/appearance_page.html.ts
++++ b/chrome/browser/resources/settings/appearance_page/appearance_page.html.ts
+@@ -63,24 +63,11 @@
+         </cr-button>
+       ` : ''}
+     </div>
+-    <div class="cr-row">
+-      <div class="flex cr-padded-text" aria-hidden="true">
+-        $i18n{browserLayout}
+-      </div>
+-      <settings-dropdown-menu id="browserLayout"
+-          label="$i18n{browserLayout}"
+-          pref-key="helium.browser.layout"
+-          .menuOptions="${this.browserLayoutOptions_}">
+-      </settings-dropdown-menu>
+-    </div>
++    <cr-link-row label="Nori settings"
++        @click="${this.onNoriSettingsClick_}">
++    </cr-link-row>
+     <div class="list-frame indented-toggles">
+       <settings-toggle-button class="hr"
+-          ?hidden="${!this.showVerticalSettings_()}"
+-          pref-key="helium.browser.vertical_right_aligned"
+-          label="$i18n{tabStripRightAlign}">
+-      </settings-toggle-button>
+-      <settings-toggle-button class="hr"
+-          ?hidden="${!this.showCenteredLocationBarSetting_()}"
+           pref-key="helium.browser.centered_location_bar"
+           label="$i18n{centeredLocationBar}">
+       </settings-toggle-button>
+@@ -93,23 +80,6 @@
+           label="$i18n{showProgressBar}">
+       </settings-toggle-button>
+     </div>
+-    <settings-toggle-button class="hr"
+-        pref-key="helium.browser.zen_mode"
+-        label="$i18n{browserZenMode}"
+-        sub-label="$i18n{browserZenModeDescription}">
+-    </settings-toggle-button>
+-    <div class="list-frame indented-toggles"
+-        ?hidden="${!this.zenModePref_?.value}">
+-      <settings-toggle-button class="hr"
+-          pref-key="helium.browser.zen_mode_sidebar_pinned"
+-          ?hidden="${!this.showVerticalSettings_()}"
+-          label="$i18n{zenModePinSidebar}">
+-      </settings-toggle-button>
+-      <settings-toggle-button class="hr"
+-          pref-key="helium.browser.zen_mode_top_chrome_pinned"
+-          label="$i18n{zenModePinToolbar}">
+-      </settings-toggle-button>
+-    </div>
+     <div class="hr" ?hidden="${!this.showHr_(
+         this.pageVisibility_.setTheme, this.pageVisibility_.homeButton)}">
+     </div>
+--- a/chrome/browser/resources/settings/appearance_page/appearance_page.ts
++++ b/chrome/browser/resources/settings/appearance_page/appearance_page.ts
+@@ -81,15 +81,6 @@
+   // </if>
+ }
+ 
+-// This must be kept in sync with the HeliumLayoutType enum in
+-// chrome/browser/ui/helium/helium_layout_state_controller.h.
+-enum BrowserLayout {
+-  CLASSIC = 0,
+-  COMPACT = 1,
+-  VERTICAL = 2,
+-  DYNAMIC = 3,
+-}
+-
+ function normalizePageVisibility(
+     visibility: boolean|AppearancePageVisibility|
+     undefined): AppearancePageVisibility {
+@@ -141,7 +132,6 @@
+       defaultZoom_: {type: Number},
+ 
+       defaultFontSizePref_: {type: Object},
+-      browserLayoutPref_: {type: Object},
+       homepageIsNewTabPagePref_: {type: Object},
+       homepagePref_: {type: Object},
+       pinContextualTaskButtonPref_: {type: Object},
+@@ -153,7 +143,6 @@
+       sidePanelIsRightAlignedPref_: {type: Object},
+       themeIdPref_: {type: Object},
+       themePolicyColorPref_: {type: Object},
+-      zenModePref_: {type: Object},
+ 
+       // <if expr="is_linux">
+       themeSystemThemePref_: {type: Object},
+@@ -174,12 +163,10 @@
+       showHoverCardImagesOption_: {type: Boolean},
+       showManagedThemeDialog_: {type: Boolean},
+       glassEffectOptions_: {type: Array},
+-      browserLayoutOptions_: {type: Array},
+       showNativeFrameMaterialsOption_: {type: Boolean},
+       showGlassEffectEnabled_: {type: Boolean},
+       ntpSimplificationBookmarksBarEnabled_: {type: Boolean},
+       bookmarksBarOptions_: {type: Array},
+-      showVerticalTabsExpandOnHoverEnabled_: {type: Boolean},
+       showOrganizerPanelEnabled_: {type: Boolean},
+       showEverythingMenuEnabled_: {type: Boolean},
+       showResetPinnedActionsButton_: {type: Boolean},
+@@ -198,8 +185,6 @@
+   protected accessor defaultZoom_: number = 1.0;
+ 
+   // Mirrored prefs.
+-  protected accessor browserLayoutPref_: PrefObject<number>|undefined =
+-      undefined;
+   protected accessor defaultFontSizePref_: PrefObject<number>|undefined =
+       undefined;
+   protected accessor homepageIsNewTabPagePref_: PrefObject<boolean>|undefined =
+@@ -222,7 +207,6 @@
+   protected accessor themeIdPref_: PrefObject<string>|undefined = undefined;
+   protected accessor themePolicyColorPref_: PrefObject<number>|undefined =
+       undefined;
+-  protected accessor zenModePref_: PrefObject<boolean>|undefined = undefined;
+ 
+   // <if expr="is_linux">
+   protected accessor themeSystemThemePref_: PrefObject<number>|undefined =
+@@ -264,25 +248,6 @@
+     {value: 'true', name: loadTimeData.getString('glassEffectModern')},
+  ];
+ 
+-  protected accessor browserLayoutOptions_: DropdownMenuOptionList = [
+-    {
+-      value: BrowserLayout.CLASSIC,
+-      name: loadTimeData.getString('browserLayoutClassic'),
+-    },
+-    {
+-      value: BrowserLayout.DYNAMIC,
+-      name: loadTimeData.getString('browserLayoutDynamic'),
+-    },
+-    {
+-      value: BrowserLayout.COMPACT,
+-      name: loadTimeData.getString('browserLayoutCompact'),
+-    },
+-    {
+-      value: BrowserLayout.VERTICAL,
+-      name: loadTimeData.getString('browserLayoutVertical'),
+-    },
+-  ];
+-
+   // The values in this array must match the BookmarkBarVisibilityState enum
+   // defined in components/bookmarks/common/bookmark_bar_visibility_state.h.
+   protected accessor bookmarksBarOptions_: DropdownMenuOptionList = [
+@@ -324,8 +289,6 @@
+       loadTimeData.getBoolean('showGlassEffectEnabled');
+   protected accessor ntpSimplificationBookmarksBarEnabled_: boolean =
+       loadTimeData.getBoolean('ntpSimplificationBookmarksBarEnabled');
+-  protected accessor showVerticalTabsExpandOnHoverEnabled_: boolean =
+-      loadTimeData.getBoolean('showVerticalTabsExpandOnHoverEnabled');
+   protected accessor showOrganizerPanelEnabled_: boolean =
+       loadTimeData.getBoolean('showOrganizerPanelEnabled');
+   protected accessor showEverythingMenuEnabled_: boolean =
+@@ -353,7 +316,6 @@
+ 
+     this.mirrorPrefs({
+       'autogenerated.theme.policy.color': 'themePolicyColorPref_',
+-      'helium.browser.layout': 'browserLayoutPref_',
+       'browser.pin_contextual_task_button': 'pinContextualTaskButtonPref_',
+       'browser.pin_split_tab_button': 'pinSplitTabButtonPref_',
+       'browser.show_forward_button': 'showForwardButtonPref_',
+@@ -367,7 +329,6 @@
+       'side_panel.alignment_overrides': 'sidePanelAlignmentOverridesPref_',
+       'side_panel.is_right_aligned': 'sidePanelIsRightAlignedPref_',
+       'toolbar.pinned_actions': 'pinnedActionsPref_',
+-      'helium.browser.zen_mode': 'zenModePref_',
+       'webkit.webprefs.default_font_size': 'defaultFontSizePref_',
+     });
+ 
+@@ -488,6 +449,10 @@
+     this.appearanceBrowserProxy_.openCustomizeChromeToolbarSection();
+   }
+ 
++  protected onNoriSettingsClick_() {
++    window.location.href = 'chrome://nori-settings/';
++  }
++
+   protected onUseDefaultClick_() {
+     if (this.isForcedTheme_) {
+       this.showManagedThemeDialog_ = true;
+@@ -712,20 +677,6 @@
+     this.appearanceBrowserProxy_.recordHoverCardMemoryUsageEnabledChanged(enabled);
+   }
+ 
+-  protected showVerticalTabsExpandOnHoverSetting_(): boolean {
+-    return this.showVerticalTabsExpandOnHoverEnabled_ &&
+-        this.browserLayoutPref_?.value === BrowserLayout.VERTICAL;
+-  }
+-
+-  protected showVerticalSettings_(): boolean {
+-    return this.browserLayoutPref_?.value === BrowserLayout.VERTICAL;
+-  }
+-
+-  protected showCenteredLocationBarSetting_(): boolean {
+-    return this.browserLayoutPref_?.value !== BrowserLayout.COMPACT;
+-  }
+-
+-
+   protected onManagedDialogClose_() {
+     this.showManagedThemeDialog_ = false;
+   }
