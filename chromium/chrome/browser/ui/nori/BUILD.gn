@@ -177,6 +177,7 @@ source_set("layout_controller") {
     "//chrome/browser/ui/tabs:tab_strip",
     "//components/tabs:public",
     "//content/public/browser",
+    "//ui/base",
     "//ui/views/controls/webview",
   ]
 }

@@ -18,7 +18,10 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
 #include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
+#include "ui/base/page_transition_types.h"
 #include "ui/compositor/compositor.h"
 #include "ui/gfx/animation/animation.h"
 #include "ui/gfx/geometry/rect.h"
@@ -226,8 +229,19 @@ void LayoutController::Insert(const std::vector<TabId>& tabs) {
     const int index = model->GetIndexOfTab(tabs::TabHandle(tab).Get());
     const bool has_opener =
         index != TabStripModel::kNoTab && model->GetOpenerOfTabAt(index);
+    content::NavigationController& navigation =
+        tabs::TabHandle(tab).Get()->GetContents()->GetController();
+    const content::NavigationEntry* entry =
+        navigation.GetPendingEntry() ? navigation.GetPendingEntry()
+                                     : navigation.GetLastCommittedEntry();
+    // Chromium also gives internal singleton tabs an opener. Only actual link
+    // navigations follow the user's link placement preference.
+    const bool opened_link =
+        has_opener && entry &&
+        ui::PageTransitionCoreTypeIs(entry->GetTransitionType(),
+                                     ui::PAGE_TRANSITION_LINK);
     const Placement placement = placement_override_.value_or(
-        has_opener ? options_.placement : Placement::kRight);
+        opened_link ? options_.placement : Placement::kRight);
     layout = nori::Insert(std::move(layout), tab, placement);
     insert_anchor_ = tab;
   }
