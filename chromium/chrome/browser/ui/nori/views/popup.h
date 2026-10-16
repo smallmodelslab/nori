@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_UI_NORI_VIEWS_POPUP_H_
 
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/views/view.h"
@@ -16,6 +17,7 @@ class BrowserWindowInterface;
 
 namespace views {
 class FocusManager;
+class Widget;
 }  // namespace views
 
 namespace nori {
@@ -33,6 +35,8 @@ class Popup : public ui::AcceleratorTarget, public views::ViewObserver {
   Popup(const Popup&) = delete;
   Popup& operator=(const Popup&) = delete;
   ~Popup() override;
+
+  void TogglePalette();
 
   // Fades the popup with its reveal animation.
   void SetRevealRatio(double ratio);
@@ -52,6 +56,7 @@ class Popup : public ui::AcceleratorTarget, public views::ViewObserver {
   const raw_ptr<BrowserWindowInterface> browser_;
   const raw_ptr<views::View> top_container_;
   views::ViewShadow shadow_;
+  base::WeakPtr<views::Widget> palette_;
   raw_ptr<views::FocusManager> focus_manager_ = nullptr;
   base::ScopedObservation<views::View, views::ViewObserver> observation_{this};
 };

@@ -1,0 +1,306 @@
+--- a/chrome/app/chrome_command_ids.h
++++ b/chrome/app/chrome_command_ids.h
+@@ -128,9 +128,11 @@
+ #define IDC_NORI_FOCUS_RIGHT            34121
+ #define IDC_NORI_FOCUS_UP               34122
+ #define IDC_NORI_FOCUS_DOWN             34123
+-#define IDC_NORI_TOGGLE_FULL_WIDTH      34124
++#define IDC_NORI_MAXIMIZE      34124
+ #define IDC_NORI_POPUP                  34125
+ #define IDC_NORI_SETTINGS               34126
++#define IDC_NORI_SPLIT_RIGHT            34127
++#define IDC_NORI_SPLIT_DOWN             34128
+ 
+ // Tab group Commands
+ #define IDC_ADD_NEW_TAB_TO_GROUP      34100
+--- a/chrome/browser/ui/accelerator_table.cc
++++ b/chrome/browser/ui/accelerator_table.cc
+@@ -358,9 +358,19 @@
+                          std::end(kTabGroupAcceleratorMap));
+ #endif  // !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_CHROMEOS)
+ 
++    const auto bind_nori = [&](ui::KeyboardCode key, int modifiers, int id) {
++      std::erase_if(*accelerators, [&](const AcceleratorMapping& mapping) {
++        return mapping.keycode == key && mapping.modifiers == modifiers;
++      });
++      accelerators->push_back({key, modifiers, id});
++    };
+     for (const nori::Command& command : nori::Commands()) {
+-      accelerators->push_back({command.key, command.modifiers, command.id});
++      bind_nori(command.key, command.modifiers, command.id);
+     }
++    bind_nori(ui::VKEY_W, ui::EF_CONTROL_DOWN, IDC_CLOSE_TAB);
++#if BUILDFLAG(IS_MAC)
++    bind_nori(ui::VKEY_B, ui::EF_COMMAND_DOWN, IDC_NORI_POPUP);
++#endif
+   }
+ 
+   return *accelerators;
+--- a/chrome/browser/ui/browser_command_controller.cc
++++ b/chrome/browser/ui/browser_command_controller.cc
+@@ -487,7 +487,7 @@
+     return false;
+   }
+ 
+-  if (nori::FindCommand(command_id)) {
++  if (nori::FindCommand(command_id) || command_id == IDC_CLOSE_TAB) {
+     return true;
+   }
+ 
+--- a/chrome/browser/ui/views/frame/browser_view.h
++++ b/chrome/browser/ui/views/frame/browser_view.h
+@@ -218,6 +218,8 @@
+   // frame area.
+   ClientFrameElementInfo GetFrameElementInfo() const;
+ 
++  nori::WindowController* nori_controller() const { return nori_.get(); }
++
+   // Returns the preferred size of the Web App Frame Toolbar. Used for example
+   // to determine the height of the title bar.
+   // Returns an empty size if this browser is not for a web app.
+--- a/chrome/app/chromium_strings.grd
++++ b/chrome/app/chromium_strings.grd
+@@ -294,15 +294,15 @@
+         </then>
+         <else>
+           <message name="IDS_PRODUCT_NAME" desc="The Chrome application name" translateable="false">
+-            Chromium
++            Nori
+           </message>
+           <message name="IDS_SHORT_PRODUCT_NAME" desc="The Chrome application short name." translateable="false">
+-            Chromium
++            Nori
+           </message>
+         </else>
+       </if>
+       <message name="IDS_APP_MENU_YOUR_CHROME_HEADER" desc="Header title for the Your Chromium section in the main App Menu">
+-        Your Chromium
++        Your Nori
+       </message>
+       <if expr="is_win">
+         <message name="IDS_SXS_SHORTCUT_NAME" desc="Unused in Chromium builds" translateable="false">
+@@ -1151,7 +1151,7 @@
+           </then>
+           <else>
+             <message name="IDS_ABOUT" desc="In Title Case: The text label of the About Chrome menu item">
+-              About &amp;Chromium
++              About &amp;Nori
+             </message>
+           </else>
+         </if>
+@@ -1168,7 +1168,7 @@
+           </then>
+           <else>
+             <message name="IDS_ABOUT" desc="The text label of the About Chrome menu item">
+-              About &amp;Chromium
++              About &amp;Nori
+             </message>
+           </else>
+         </if>
+@@ -1178,7 +1178,7 @@
+       </if>
+       <if expr="is_chromeos">
+         <message name="IDS_ABOUT" desc="The text label of the About Chrome menu item">
+-          About &amp;Chromium
++          About &amp;Nori
+         </message>
+         <message name="IDS_RELAUNCH_TO_UPDATE" desc="The text label of the relaunch to update ChromeOS menu item">
+           Relaunch to update &amp;ChromiumOS
+--- a/chrome/browser/ui/helium/helium_layout_state_controller.cc
++++ b/chrome/browser/ui/helium/helium_layout_state_controller.cc
+@@ -61,14 +61,7 @@
+ }
+ 
+ HeliumLayoutType HeliumLayoutStateController::GetBrowserLayout() const {
+-  int layout_value = pref_service_->GetInteger(prefs::kHeliumLayout);
+-
+-  if (layout_value < std::to_underlying(HeliumLayoutType::kClassic) ||
+-      layout_value > std::to_underlying(HeliumLayoutType::kMaxValue)) {
+-    return HeliumLayoutType::kClassic;
+-  }
+-
+-  return static_cast<HeliumLayoutType>(layout_value);
++  return HeliumLayoutType::kVertical;
+ }
+ 
+ base::CallbackListSubscription
+--- a/chrome/browser/ui/webui/chrome_web_ui_configs.cc
++++ b/chrome/browser/ui/webui/chrome_web_ui_configs.cc
+@@ -72,6 +72,7 @@
+ 
+ #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+ #include "chrome/browser/ui/nori/settings/settings_ui.h"
++#include "chrome/browser/ui/nori/new_tab/new_tab_ui.h"
+ #endif
+ 
+ #if BUILDFLAG(ENABLE_WEBUI_NTP)
+@@ -481,6 +482,7 @@
+   map.AddWebUIConfig(std::make_unique<HeliumOnboardingPageConfig>());
+ #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+   map.AddWebUIConfig(std::make_unique<nori::SettingsUIConfig>());
++  map.AddWebUIConfig(std::make_unique<nori::NewTabUIConfig>());
+ #endif
+   map.AddWebUIConfig(std::make_unique<ProfileCustomizationUIConfig>());
+   map.AddWebUIConfig(std::make_unique<ProfilePickerUIConfig>());
+--- a/chrome/chrome_paks.gni
++++ b/chrome/chrome_paks.gni
+@@ -500,8 +500,11 @@
+       ]
+     }
+     if (is_mac || is_linux) {
+-      sources += [ "$root_gen_dir/chrome/browser/ui/nori/settings/nori_settings_resources.pak" ]
+-      deps += [ "//chrome/browser/ui/nori:settings_resources" ]
++      sources += [
++        "$root_gen_dir/chrome/browser/ui/nori/settings/nori_settings_resources.pak",
++        "$root_gen_dir/chrome/browser/ui/nori/new_tab/nori_new_tab_resources.pak",
++      ]
++      deps += [ "//chrome/browser/ui/nori:settings_resources", "//chrome/browser/ui/nori:new_tab_resources" ]
+     }
+ 
+     if (is_win || is_mac || is_linux || is_chromeos || is_android) {
+--- a/components/helium_onboarding/helium_onboarding_strings.grdp
++++ b/components/helium_onboarding/helium_onboarding_strings.grdp
+@@ -1,7 +1,7 @@
+ <grit-part>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_PAGE_TITLE" desc="The title of the Helium setup onboarding page.">
+-  Helium Setup
++  Nori Setup
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_BUTTON_USE_DEFAULTS" desc="Button label that skips detailed setup and applies the default onboarding choices.">
+@@ -28,10 +28,10 @@
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_WELCOME_GREETING" desc="Main greeting on the first onboarding screen.">
+-  Meet Helium
++  Meet Nori
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_WELCOME_BODY" desc="Introductory body text on the first onboarding screen.">
+-  Configure Helium to match your taste and import data from other browsers. Make it feel like home or jump straight to browsing.
++  Your pages fill the window. Split them to the right or below, and find every command with Ctrl+B.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_WELCOME_TERMS" desc="Legal note shown during onboarding. Keep each BEGIN/END placeholder pair around its corresponding link text, but move the pairs as needed for a natural translation.">
+   By continuing, you agree to the <ph name="BEGIN_LINK_PRIVACY">$1</ph>privacy policy<ph name="END_LINK_PRIVACY">$2</ph> and <ph name="BEGIN_LINK_TERMS">$3</ph>terms of use<ph name="END_LINK_TERMS">$4</ph>.
+@@ -44,7 +44,7 @@
+   Ready to browse?
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_FINISH_BODY" desc="Body text on the final onboarding screen.">
+-  The setup is complete, thank you for choosing Helium. Time to enjoy the internet again.
++  The setup is complete, thank you for choosing Nori. Time to enjoy the internet again.
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_SERVICES_TITLE" desc="Title of the onboarding screen for Helium services consent.">
+@@ -146,10 +146,10 @@
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_TITLE" desc="Title of the onboarding screen asking whether Helium should be the default browser.">
+-  Ready to switch to Helium?
++  Ready to switch to Nori?
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_SUBTITLE" desc="Subtitle of the onboarding screen asking whether Helium should be the default browser.">
+-  Better privacy, speed, and comfort. All in one click. Wanna make links open in Helium by default?
++  Better privacy, speed, and comfort. All in one click. Wanna make links open in Nori by default?
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_YES" desc="Label for the option to make Helium the default browser.">
+   Yes
+@@ -158,10 +158,10 @@
+   No
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_YES_DESC" desc="Description for the option to make Helium the default browser.">
+-  Make Helium my default browser.
++  Make Nori my default browser.
+ </message>
+ <message name="IDS_HELIUM_ONBOARDING_DEFAULT_BROWSER_NO_DESC" desc="Description for the option to keep the current default browser.">
+-  Just trying Helium for now.
++  Just trying Nori for now.
+ </message>
+ 
+ <message name="IDS_HELIUM_ONBOARDING_DATA_IMPORT_TITLE" desc="Title of the onboarding screen for importing browser data.">
+--- a/tools/gritsettings/resource_ids.spec
++++ b/tools/gritsettings/resource_ids.spec
+@@ -1804,6 +1804,10 @@
+     "META": {"sizes": {"includes": [10]}},
+     "includes": [10240],
+   },
++  "chrome/browser/ui/nori/new_tab/resources/nori_new_tab_resources.grd": {
++    "META": {"sizes": {"includes": [10]}},
++    "includes": [10250],
++  },
+ 
+   "<(SHARED_INTERMEDIATE_DIR)/THIS_IS_A_PLACEHOLDER.grd": {
+     "META": {"sizes": {"includes": [800]}},
+--- a/chrome/browser/search/search.cc
++++ b/chrome/browser/search/search.cc
+@@ -150,7 +150,7 @@
+ #if BUILDFLAG(IS_ANDROID)
+     const GURL local_url;
+ #else
+-    const GURL local_url(chrome::ChromeUINewTabPageURLAsGURL());
++    const GURL local_url("chrome://nori-newtab/");
+ #endif
+     return NewTabURLDetails(local_url, NEW_TAB_URL_VALID);
+   }
+--- a/chrome/browser/ui/webui/BUILD.gn
++++ b/chrome/browser/ui/webui/BUILD.gn
+@@ -111,7 +111,7 @@
+   }
+ 
+   if (is_mac || is_linux) {
+-    deps += [ "//chrome/browser/ui/nori:settings" ]
++    deps += [ "//chrome/browser/ui/nori:settings", "//chrome/browser/ui/nori:new_tab" ]
+   }
+ 
+   if (!is_android) {
+--- a/chrome/browser/ui/BUILD.gn
++++ b/chrome/browser/ui/BUILD.gn
+@@ -910,6 +910,7 @@
+   ]
+ 
+   allow_circular_includes_from = [
++    "//chrome/browser/ui/nori:views",
+     # page_load_metrics's :impl includes headers from //chrome/browser/ui that
+     # can't be split out yet.
+     "//chrome/browser/page_load_metrics:impl",
+--- a/components/url_formatter/url_formatter.cc
++++ b/components/url_formatter/url_formatter.cc
+@@ -625,18 +625,6 @@
+                                prefix_end, adjustments);
+   }
+ 
+-  if ((format_types & kFormatReplaceChromeProtocol) != 0) {
+-    if (url.SchemeIs(content::kChromeUIScheme)) {
+-      GURL url_;
+-      GURL::Replacements replacements;
+-      replacements.SetSchemeStr(content::kHeliumUIScheme);
+-      url_ = url.ReplaceComponents(replacements);
+-
+-      return FormatUrlWithAdjustments(url_, format_types, unescape_rules,
+-                                      new_parsed, prefix_end, adjustments);
+-    }
+-  }
+-
+   // We handle both valid and invalid URLs (this will give us the spec
+   // regardless of validity).
+   const std::string& spec = url.possibly_invalid_spec();
+--- a/chrome/browser/ui/cocoa/main_menu_builder.mm
++++ b/chrome/browser/ui/cocoa/main_menu_builder.mm
+@@ -136,9 +136,18 @@
+       Item(IDS_FILE_MENU_MAC)
+           .tag(IDC_FILE_MENU)
+           .submenu({
++              Item(IDS_NORI_COMMAND_POPUP)
++                  .command_id(IDC_NORI_POPUP)
++                  .remove_if(is_pwa),
+               Item(IDS_NEW_TAB_MAC)
+                   .command_id(IDC_NEW_TAB)
+                   .remove_if(is_pwa),
++              Item(IDS_NORI_COMMAND_SPLIT_RIGHT)
++                  .command_id(IDC_NORI_SPLIT_RIGHT)
++                  .remove_if(is_pwa),
++              Item(IDS_NORI_COMMAND_SPLIT_DOWN)
++                  .command_id(IDC_NORI_SPLIT_DOWN)
++                  .remove_if(is_pwa),
+               Item(IDS_NEW_WINDOW_MAC)
+                   .command_id(IDC_NEW_WINDOW),
+               Item(IDS_NEW_INCOGNITO_WINDOW_MAC)

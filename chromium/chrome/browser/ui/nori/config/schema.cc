@@ -63,9 +63,9 @@ Setting NumberSetting(std::string path,
                       double max,
                       std::string description,
                       Apply apply) {
-  Setting setting = MakeSetting(std::move(path), type,
-                                std::move(default_literal),
-                                std::move(description), apply);
+  Setting setting =
+      MakeSetting(std::move(path), type, std::move(default_literal),
+                  std::move(description), apply);
   setting.min = min;
   setting.max = max;
   return setting;
@@ -89,12 +89,6 @@ std::string Quoted(std::string_view text) {
 
 std::vector<Setting> BuildSettings() {
   std::vector<Setting> settings;
-  settings.push_back(NumberSetting(
-      "layout.default_column_width", SettingType::kNumber, "0.5", 0.1, 1.0,
-      "Width of a new column, as a fraction of the window.",
-      [](Config& config, const Setting&, const SettingValue& value) {
-        config.column_width = Number(value);
-      }));
   settings.push_back(NumberSetting(
       "layout.gaps", SettingType::kInteger, "0", 0, 200,
       "Space between columns and stacked tabs, in pixels.",
@@ -178,10 +172,9 @@ std::optional<std::string> Validate(const Setting& setting,
   switch (setting.type) {
     case SettingType::kNumber:
     case SettingType::kInteger: {
-      const double number =
-          setting.type == SettingType::kNumber
-              ? Number(value)
-              : static_cast<double>(std::get<int64_t>(value));
+      const double number = setting.type == SettingType::kNumber
+                                ? Number(value)
+                                : static_cast<double>(std::get<int64_t>(value));
       if (number < setting.min || number > setting.max) {
         return base::StrCat({"must be between ",
                              base::NumberToString(setting.min), " and ",

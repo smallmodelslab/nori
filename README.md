@@ -1,9 +1,8 @@
 # Nori
 
-A Chromium browser with a niri-style scrolling layout. Pages sit in columns
-that scroll left and right, columns stack tabs, and workspaces stack
-vertically. There is no tab strip, toolbar or frame: the pages fill the window.
-Everything is configured in one TOML file.
+A Chromium browser with a scrolling, tiled workspace. Ordinary tabs fill the
+window. Split a page to the right or below, nest splits, and close any pane to
+give its space back to its sibling. There is no tab strip or permanent toolbar.
 
 Nori is built on [Helium](https://github.com/imputnet/helium), so Chrome
 extensions, the Chrome Web Store, uBlock Origin and 1Password's desktop
@@ -13,19 +12,27 @@ integration work as they do there.
 
 | Key | Action |
 | --- | --- |
-| Ctrl+N / Ctrl+I | Focus the column to the left / right |
-| Ctrl+U / Ctrl+E | Focus the tab above / below, then the workspace above / below |
-| Ctrl+Enter | Toggle the focused column between its width and the full window |
-| Ctrl+B | Address, site settings and extensions for the focused tab |
+| Ctrl+B / Cmd+B | Search tabs, browser commands, addresses, and the web |
+| Ctrl+D | Split the focused pane to the right |
+| Ctrl+Shift+D | Split the focused pane below |
+| Ctrl+W / Cmd+W | Close the focused tab; its sibling fills the space |
+| Ctrl+T / Cmd+T | Open a new tab that fills the window |
+| Ctrl+N / Ctrl+I | Focus left / right |
+| Ctrl+U / Ctrl+E | Focus above / below, then the workspace above / below |
+| Ctrl+Enter | Maximize the focused pane, or restore its splits |
+| Ctrl+L / Cmd+L | Address, site settings, and extensions for the focused tab |
 | Ctrl+, | Nori settings |
-| Escape | Close the Ctrl+B popup |
+| Escape | Dismiss the command palette |
 
-Ctrl rather than Cmd, so the usual browser shortcuts keep working. U, N, E and
-I sit where W, A, S and D are for a Colemak typist.
+Cmd shortcuts apply on macOS. The palette lists the actual configured keys.
+Type to filter, use the arrow keys to select, and press Enter to run a command
+or switch to a tab. Enter an address or search to browse. Browser commands come
+from the browser's shortcut and menu models, including actions without a key.
 
-A link's context menu opens it in a new tab to the right (a new column),
-below or above (stacked in the same column). Cmd+click, middle-click and
-`target=_blank` links follow `new_tab.link_placement`.
+U, N, E and I sit where W, A, S and D are for a Colemak typist. A link's context
+menu opens it in a new full-window tab to the right, or splits the focused pane
+above or below. Cmd+click, middle-click and `target=_blank` links follow
+`new_tab.link_placement`.
 
 ## Settings
 

@@ -40,7 +40,6 @@ class WebView;
 namespace nori {
 
 struct LayoutOptions {
-  double column_fraction = 0.5;
   int gap = 0;
   SpringParams horizontal;
   SpringParams vertical;
@@ -72,7 +71,7 @@ class LayoutController : public TabStripModelObserver,
   static LayoutController* From(BrowserWindowInterface* browser);
 
   void Focus(Direction direction);
-  void ToggleFullWidth();
+  void ToggleMaximize();
   // Runs `open`, putting any tab it opens at `placement` instead of
   // `LayoutOptions::placement`.
   void OpenWithPlacement(Placement placement, base::FunctionRef<void()> open);
@@ -89,9 +88,10 @@ class LayoutController : public TabStripModelObserver,
 
  private:
   // TabStripModelObserver:
-  void OnTabStripModelChanged(TabStripModel* tab_strip_model,
-                              const TabStripModelChange& change,
-                              const TabStripSelectionChange& selection) override;
+  void OnTabStripModelChanged(
+      TabStripModel* tab_strip_model,
+      const TabStripModelChange& change,
+      const TabStripSelectionChange& selection) override;
 
   // ui::CompositorAnimationObserver:
   void OnAnimationStep(base::TimeTicks timestamp) override;
@@ -132,6 +132,8 @@ class LayoutController : public TabStripModelObserver,
 
   Motion scroll_;
   Motion stack_;
+  Motion resize_;
+  std::map<TabId, Rect> resize_from_;
   raw_ptr<ui::Compositor> compositor_ = nullptr;
 
   struct Peer {

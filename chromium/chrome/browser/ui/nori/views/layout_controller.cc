@@ -4,6 +4,8 @@
 
 #include "chrome/browser/ui/nori/views/layout_controller.h"
 
+#include <algorithm>
+#include <cmath>
 #include <memory>
 #include <set>
 #include <utility>
@@ -18,6 +20,7 @@
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/compositor/compositor.h"
+#include "ui/gfx/animation/animation.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/views/controls/webview/webview.h"
 #include "ui/views/view.h"
@@ -76,13 +79,14 @@ void LayoutController::Focus(Direction direction) {
   SyncTabStrip();
 }
 
-void LayoutController::ToggleFullWidth() {
-  SetLayout(nori::ToggleFullWidth(layout_));
+void LayoutController::ToggleMaximize() {
+  SetLayout(nori::ToggleMaximize(layout_));
 }
 
 void LayoutController::OpenWithPlacement(Placement placement,
                                          base::FunctionRef<void()> open) {
   // Tabs are inserted, and so placed, before opening returns.
+  insert_anchor_.reset();
   base::AutoReset<std::optional<Placement>> override(&placement_override_,
                                                      placement);
   open();
@@ -93,7 +97,6 @@ void LayoutController::SetOptions(const LayoutOptions& options) {
     return;
   }
   options_ = options;
-  geometry_.column_fraction = options.column_fraction;
   geometry_.gap = options.gap;
   SetLayout(layout_);
 }
@@ -182,7 +185,9 @@ void LayoutController::OnTabStripModelChanged(
 }
 
 void LayoutController::OnAnimationStep(base::TimeTicks timestamp) {
-  if (!scroll_.IsAnimatingAt(timestamp) && !stack_.IsAnimatingAt(timestamp)) {
+  if (!scroll_.IsAnimatingAt(timestamp) && !stack_.IsAnimatingAt(timestamp) &&
+      !resize_.IsAnimatingAt(timestamp)) {
+    resize_from_.clear();
     StopAnimating();
   }
   UpdatePeers();
@@ -220,14 +225,14 @@ void LayoutController::SetLayout(Layout layout) {
   // Workspaces above may have vanished, which moves every index; keep the
   // vertical motion attached to the workspace that is now focused.
   if (std::optional<size_t> before = FindWorkspace(layout_, focused.id)) {
-    stack_.Shift((static_cast<double>(layout.focused) -
-                  static_cast<double>(*before)) *
-                 geometry_.height);
+    stack_.Shift(
+        (static_cast<double>(layout.focused) - static_cast<double>(*before)) *
+        geometry_.height);
   }
 
-  const bool can_animate = host_->GetWidget() &&
-                           host_->GetWidget()->IsVisible() &&
-                           geometry_.width > 0;
+  const bool can_animate =
+      host_->GetWidget() && host_->GetWidget()->IsVisible() &&
+      geometry_.width > 0 && gfx::Animation::ShouldRenderRichAnimation();
   if (!can_animate) {
     scroll_.JumpTo(focused.scroll);
     stack_.JumpTo(StackScroll(layout, geometry_));
@@ -240,15 +245,40 @@ void LayoutController::SetLayout(Layout layout) {
     stack_.AnimateTo(StackScroll(layout, geometry_), now, options_.vertical);
   }
 
+  if (can_animate && focused.id == was_focused.id &&
+      focused.columns.size() == was_focused.columns.size() &&
+      focused.focused == was_focused.focused && !focused.columns.empty()) {
+    const Column& column = focused.columns[focused.focused];
+    const Column& was_column = was_focused.columns[was_focused.focused];
+    if (column.root != was_column.root ||
+        column.maximized != was_column.maximized) {
+      const auto before = CurrentTiles(now);
+      resize_from_.clear();
+      for (const Tile& tile : before)
+        resize_from_.emplace(tile.tab, tile.bounds);
+      resize_.JumpTo(0);
+      SpringParams resize_params = options_.horizontal;
+      resize_params.epsilon /=
+          std::max(1, std::max(geometry_.width, geometry_.height));
+      resize_.AnimateTo(1, now, resize_params);
+    }
+  } else {
+    resize_from_.clear();
+    resize_.JumpTo(1);
+  }
+
   layout_ = std::move(layout);
   UpdatePeers();
   Relayout();
-  if (scroll_.IsAnimatingAt(now) || stack_.IsAnimatingAt(now)) {
+  if (scroll_.IsAnimatingAt(now) || stack_.IsAnimatingAt(now) ||
+      resize_.IsAnimatingAt(now)) {
     StartAnimating();
   }
 }
 
 void LayoutController::SetGeometry(const gfx::Size& size) {
+  resize_from_.clear();
+  resize_.JumpTo(1);
   geometry_.width = size.width();
   geometry_.height = size.height();
   layout_ = ScrollIntoView(std::move(layout_), geometry_);
@@ -261,7 +291,21 @@ void LayoutController::SetGeometry(const gfx::Size& size) {
 }
 
 std::vector<Tile> LayoutController::CurrentTiles(base::TimeTicks now) const {
-  return Tiles(layout_, geometry_, scroll_.ValueAt(now), stack_.ValueAt(now));
+  auto tiles =
+      Tiles(layout_, geometry_, scroll_.ValueAt(now), stack_.ValueAt(now));
+  const double progress = std::clamp(resize_.ValueAt(now), 0.0, 1.0);
+  for (Tile& tile : tiles) {
+    if (auto it = resize_from_.find(tile.tab); it != resize_from_.end()) {
+      const Rect& from = it->second;
+      const auto blend = [progress](int a, int b) {
+        return static_cast<int>(std::lround(a + (b - a) * progress));
+      };
+      tile.bounds = {blend(from.x, tile.bounds.x), blend(from.y, tile.bounds.y),
+                     blend(from.width, tile.bounds.width),
+                     blend(from.height, tile.bounds.height)};
+    }
+  }
+  return tiles;
 }
 
 void LayoutController::UpdatePeers() {
@@ -293,9 +337,9 @@ void LayoutController::UpdatePeers() {
     if (created) {
       peer.view = host_->AddChildView(
           std::make_unique<views::WebView>(browser_->GetProfile()));
-      peer.focused = peer.view->AddWebContentsFocusedCallback(
-          base::BindRepeating(&LayoutController::OnPeerFocused,
-                              base::Unretained(this)));
+      peer.focused =
+          peer.view->AddWebContentsFocusedCallback(base::BindRepeating(
+              &LayoutController::OnPeerFocused, base::Unretained(this)));
     }
     if (peer.view->web_contents() != contents) {
       peer.view->SetWebContents(contents);
@@ -310,23 +354,23 @@ void LayoutController::OnPeerFocused(views::WebView* view) {
     }
     // Activating moves this page out of the peer that is notifying us.
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE, base::BindOnce(
-                       [](base::WeakPtr<LayoutController> self, TabId tab) {
-                         if (!self) {
-                           return;
-                         }
-                         TabStripModel* model =
-                             self->browser_->GetTabStripModel();
-                         const int index =
-                             model->GetIndexOfTab(tabs::TabHandle(tab).Get());
-                         if (index != TabStripModel::kNoTab) {
-                           model->ActivateTabAt(
-                               index, TabStripUserGestureDetails(
-                                          TabStripUserGestureDetails::
-                                              GestureType::kMouse));
-                         }
-                       },
-                       weak_factory_.GetWeakPtr(), tab));
+        FROM_HERE,
+        base::BindOnce(
+            [](base::WeakPtr<LayoutController> self, TabId tab) {
+              if (!self) {
+                return;
+              }
+              TabStripModel* model = self->browser_->GetTabStripModel();
+              const int index =
+                  model->GetIndexOfTab(tabs::TabHandle(tab).Get());
+              if (index != TabStripModel::kNoTab) {
+                model->ActivateTabAt(
+                    index,
+                    TabStripUserGestureDetails(
+                        TabStripUserGestureDetails::GestureType::kMouse));
+              }
+            },
+            weak_factory_.GetWeakPtr(), tab));
     return;
   }
 }
@@ -377,8 +421,7 @@ void LayoutController::SyncTabStrip() {
         continue;
       }
       // Pinned tabs and groups can refuse a position; leave the rest alone.
-      if (model->MoveWebContentsAt(from, i, /*select_after_move=*/false) !=
-          i) {
+      if (model->MoveWebContentsAt(from, i, /*select_after_move=*/false) != i) {
         break;
       }
     }
@@ -388,18 +431,17 @@ void LayoutController::SyncTabStrip() {
   if (focused && focused != ActiveTab()) {
     const int index = model->GetIndexOfTab(tabs::TabHandle(*focused).Get());
     if (index != TabStripModel::kNoTab) {
-      model->ActivateTabAt(index, TabStripUserGestureDetails(
-                                      TabStripUserGestureDetails::GestureType::
-                                          kKeyboard));
+      model->ActivateTabAt(
+          index, TabStripUserGestureDetails(
+                     TabStripUserGestureDetails::GestureType::kKeyboard));
     }
   }
 }
 
 content::WebContents* LayoutController::ContentsFor(TabId tab) const {
   tabs::TabInterface* interface = tabs::TabHandle(tab).Get();
-  if (!interface ||
-      browser_->GetTabStripModel()->GetIndexOfTab(interface) ==
-          TabStripModel::kNoTab) {
+  if (!interface || browser_->GetTabStripModel()->GetIndexOfTab(interface) ==
+                        TabStripModel::kNoTab) {
     return nullptr;
   }
   return interface->GetContents();

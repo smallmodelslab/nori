@@ -68,12 +68,12 @@ TEST(NoriLayoutTest, ClosingTheFocusedColumnFocusesItsNeighbour) {
   EXPECT_EQ(FocusedTab(layout), 1);
 }
 
-TEST(NoriLayoutTest, TogglesFullWidthOnTheFocusedColumnOnly) {
-  Layout layout = ToggleFullWidth(TwoColumns());
-  EXPECT_FALSE(layout.workspaces[0].columns[0].full_width);
-  EXPECT_TRUE(layout.workspaces[0].columns[1].full_width);
-  layout = ToggleFullWidth(std::move(layout));
-  EXPECT_FALSE(layout.workspaces[0].columns[1].full_width);
+TEST(NoriLayoutTest, MaximizesTheFocusedPaneOnly) {
+  Layout layout = ToggleMaximize(TwoColumns());
+  EXPECT_FALSE(layout.workspaces[0].columns[0].maximized);
+  EXPECT_TRUE(layout.workspaces[0].columns[1].maximized);
+  layout = ToggleMaximize(std::move(layout));
+  EXPECT_FALSE(layout.workspaces[0].columns[1].maximized);
 }
 
 constexpr Geometry kWindow{.width = 1000, .height = 800};
@@ -87,24 +87,24 @@ Layout FocusAndScroll(Layout layout, Direction direction) {
 }
 
 TEST(NoriLayoutTest, ScrollsOnlyAsFarAsNeededToShowTheFocusedColumn) {
-  Layout layout = ScrollIntoView(Insert(TwoColumns(), 3, Placement::kRight),
-                                 kWindow);
-  EXPECT_EQ(Scroll(layout), 0);
+  Layout layout =
+      ScrollIntoView(Insert(TwoColumns(), 3, Placement::kRight), kWindow);
+  EXPECT_EQ(Scroll(layout), 1000);
 
   layout = FocusAndScroll(std::move(layout), Direction::kRight);
-  EXPECT_EQ(Scroll(layout), 500);
+  EXPECT_EQ(Scroll(layout), 2000);
   layout = FocusAndScroll(std::move(layout), Direction::kLeft);
-  EXPECT_EQ(Scroll(layout), 500);
+  EXPECT_EQ(Scroll(layout), 1000);
   layout = FocusAndScroll(std::move(layout), Direction::kLeft);
   EXPECT_EQ(Scroll(layout), 0);
 }
 
-TEST(NoriLayoutTest, AFullWidthColumnFillsTheWindow) {
+TEST(NoriLayoutTest, EveryNewTabFillsTheWindow) {
   Layout layout = Insert(TwoColumns(), 3, Placement::kRight);
   layout = FocusAndScroll(std::move(layout), Direction::kRight);
-  layout = ScrollIntoView(ToggleFullWidth(std::move(layout)), kWindow);
+  layout = ScrollIntoView(ToggleMaximize(std::move(layout)), kWindow);
 
-  EXPECT_EQ(Scroll(layout), 1000);
+  EXPECT_EQ(Scroll(layout), 2000);
   EXPECT_EQ(Tiles(layout, kWindow, Scroll(layout), 0),
             (std::vector<Tile>{{3, {0, 0, 1000, 800}}}));
 }
@@ -113,23 +113,69 @@ TEST(NoriLayoutTest, ClosingTheLastColumnDoesNotLeaveAGap) {
   Layout layout = Insert(TwoColumns(), 3, Placement::kRight);
   layout = FocusAndScroll(std::move(layout), Direction::kRight);
   layout = ScrollIntoView(Remove(std::move(layout), 3), kWindow);
-  EXPECT_EQ(Scroll(layout), 0);
+  EXPECT_EQ(Scroll(layout), 1000);
 }
 
-TEST(NoriLayoutTest, TilesSplitAColumnAndFollowTheWorkspaceStack) {
-  Layout layout = Insert(TwoColumns(), 3, Placement::kBelow);
+TEST(NoriLayoutTest, NestedSplitsAndClosingRestoreTheSiblingRectangle) {
+  Layout layout = Insert(Layout(), 1, Placement::kRight);
+  layout = Insert(std::move(layout), 2, Placement::kSplitRight);
+  layout = FocusTab(std::move(layout), 2);
+  layout = Insert(std::move(layout), 3, Placement::kBelow);
   EXPECT_EQ(Tiles(layout, kWindow, 0, 0),
             (std::vector<Tile>{{1, {0, 0, 500, 800}},
                                {2, {500, 0, 500, 400}},
                                {3, {500, 400, 500, 400}}}));
+  layout = FocusTab(std::move(layout), 3);
+  layout = Remove(std::move(layout), 2);
+  EXPECT_EQ(FocusedTab(layout), 3);
+  EXPECT_EQ(
+      Tiles(layout, kWindow, 0, 0),
+      (std::vector<Tile>{{1, {0, 0, 500, 800}}, {3, {500, 0, 500, 800}}}));
+  layout = Remove(std::move(layout), 3);
+  EXPECT_EQ(FocusedTab(layout), 1);
+  EXPECT_EQ(Tiles(layout, kWindow, 0, 0),
+            (std::vector<Tile>{{1, {0, 0, 1000, 800}}}));
+}
 
-  layout = Focus(Focus(std::move(layout), Direction::kDown), Direction::kDown);
-  ASSERT_EQ(StackScroll(layout, kWindow), 800);
-  EXPECT_EQ(Tiles(layout, kWindow, 0, 400),
-            (std::vector<Tile>{{1, {0, -400, 500, 800}},
-                               {2, {500, -400, 500, 400}},
-                               {3, {500, 0, 500, 400}}}));
-  EXPECT_TRUE(Tiles(layout, kWindow, 0, 800).empty());
+TEST(NoriLayoutTest, FocusFollowsNestedSplitGeometry) {
+  Layout layout = Insert(Layout(), 1, Placement::kRight);
+  layout = Insert(std::move(layout), 2, Placement::kBelow);
+  layout = FocusTab(std::move(layout), 2);
+  layout = Insert(std::move(layout), 3, Placement::kSplitRight);
+  layout = Focus(std::move(layout), Direction::kRight);
+  EXPECT_EQ(FocusedTab(layout), 3);
+  layout = Focus(std::move(layout), Direction::kUp);
+  EXPECT_EQ(FocusedTab(layout), 1);
+  layout = Focus(std::move(layout), Direction::kDown);
+  EXPECT_EQ(FocusedTab(layout), 2);
+  layout = Remove(std::move(layout), 1);
+  EXPECT_EQ(
+      Tiles(layout, kWindow, 0, 0),
+      (std::vector<Tile>{{2, {0, 0, 500, 800}}, {3, {500, 0, 500, 800}}}));
+}
+
+TEST(NoriLayoutTest, MaximizeRestoresTheSplitTree) {
+  Layout layout = Insert(Layout(), 1, Placement::kRight);
+  layout = Insert(std::move(layout), 2, Placement::kBelow);
+  layout = ToggleMaximize(std::move(layout));
+  EXPECT_EQ(Tiles(layout, kWindow, 0, 0),
+            (std::vector<Tile>{{1, {0, 0, 1000, 800}}}));
+  layout = ToggleMaximize(std::move(layout));
+  EXPECT_EQ(
+      Tiles(layout, kWindow, 0, 0),
+      (std::vector<Tile>{{1, {0, 0, 1000, 400}}, {2, {0, 400, 1000, 400}}}));
+}
+
+TEST(NoriLayoutTest, SplitGapsDoNotLeaveUnusedSpaceAfterClose) {
+  const Geometry geometry{.width = 1001, .height = 801, .gap = 5};
+  Layout layout = Insert(Layout(), 1, Placement::kRight);
+  layout = Insert(std::move(layout), 2, Placement::kSplitRight);
+  EXPECT_EQ(
+      Tiles(layout, geometry, 0, 0),
+      (std::vector<Tile>{{1, {0, 0, 498, 801}}, {2, {503, 0, 498, 801}}}));
+  layout = Remove(std::move(layout), 1);
+  EXPECT_EQ(Tiles(layout, geometry, 0, 0),
+            (std::vector<Tile>{{2, {0, 0, 1001, 801}}}));
 }
 
 }  // namespace

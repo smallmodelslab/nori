@@ -7,6 +7,7 @@
 #include <optional>
 
 #include "chrome/app/chrome_command_ids.h"
+#include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/nori/commands/commands.h"
 #include "chrome/browser/ui/nori/settings/settings_ui.h"
 #include "chrome/browser/ui/nori/views/layout_controller.h"
@@ -51,10 +52,14 @@ bool ExecuteCommand(BrowserWindowInterface* browser, int id) {
   if (!layout) {
     return true;
   }
-  if (std::optional<Direction> direction = FocusDirection(id)) {
+  if (id == IDC_NORI_SPLIT_RIGHT || id == IDC_NORI_SPLIT_DOWN) {
+    layout->OpenWithPlacement(
+        id == IDC_NORI_SPLIT_RIGHT ? Placement::kSplitRight : Placement::kBelow,
+        [browser] { chrome::ExecuteCommand(browser, IDC_NEW_TAB); });
+  } else if (std::optional<Direction> direction = FocusDirection(id)) {
     layout->Focus(*direction);
-  } else if (id == IDC_NORI_TOGGLE_FULL_WIDTH) {
-    layout->ToggleFullWidth();
+  } else if (id == IDC_NORI_MAXIMIZE) {
+    layout->ToggleMaximize();
   }
   return true;
 }

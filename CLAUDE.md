@@ -60,13 +60,13 @@ Everything lives under `chromium/chrome/browser/ui/nori/`:
 
 | Directory | Contents |
 | --- | --- |
-| `layout/` | The pure model: workspaces, columns, springs, popup bounds |
+| `layout/` | The pure model: workspaces, full-window columns, split trees, springs, popup bounds |
 | `commands/` | The command table (ids, labels, default keys) and link menu items |
 | `config/` | Schema, shortcuts, the toml++ document, and `ConfigStore` for the file |
-| `views/` | Per-window glue: `WindowController`, `LayoutController`, the popup |
+| `views/` | Per-window glue: `WindowController`, `LayoutController`, the command palette |
 | `settings/` | chrome://nori-settings: handler, controller and plain HTML/CSS/JS |
 
-The Ctrl+B popup is Helium's own toolbar, floated over the page by the
-browser view layout, not a WebUI page: that keeps the omnibox, page info and
-extension actions working unchanged. The settings page is plain files in a
-hand-written grit `.grd`, so it needs none of Chromium's TypeScript toolchain.
+Ctrl+B / Cmd+B opens a native command palette backed by the browser's shortcut
+and menu models. Ctrl+L / Cmd+L still floats the browser's own toolbar over the
+page, preserving the omnibox, site information and extension actions. The Nori
+new-tab and settings pages use plain files in hand-written grit resources.
