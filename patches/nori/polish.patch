@@ -781,23 +781,9 @@
    return RespondNow(NoArguments());
  }
  
---- a/chrome/browser/ui/bookmarks/BUILD.gn
-+++ b/chrome/browser/ui/bookmarks/BUILD.gn
-@@ -90,6 +90,7 @@
-     "//chrome/browser/ui/dialogs",
-     "//chrome/browser/ui/fullscreen",
-     "//chrome/browser/ui/navigator",
-+    "//chrome/browser/ui/nori:layout_controller",
-     "//chrome/browser/ui/tabs:tab_group",
-     "//chrome/browser/ui/tabs:tab_strip",
-     "//chrome/browser/ui/tabs/saved_tab_groups",
 --- a/chrome/browser/ui/bookmarks/bookmark_utils_desktop.cc
 +++ b/chrome/browser/ui/bookmarks/bookmark_utils_desktop.cc
-@@ -32,10 +32,10 @@
- #include "chrome/browser/ui/incognito_allowed_url.h"
- #include "chrome/browser/ui/navigator/browser_navigator.h"
- #include "chrome/browser/ui/navigator/browser_navigator_params.h"
-+#include "chrome/browser/ui/nori/views/layout_controller.h"
+@@ -35,7 +35,6 @@
  #include "chrome/browser/ui/simple_message_box.h"
  #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
  #include "chrome/browser/ui/tabs/saved_tab_groups/tab_group_menu_utils.h"
@@ -805,7 +791,7 @@
  #include "chrome/browser/ui/tabs/tab_group_model.h"
  #include "chrome/browser/ui/tabs/tab_strip_model.h"
  #include "chrome/browser/ui/ui_features.h"
-@@ -48,7 +48,6 @@
+@@ -48,7 +47,6 @@
  #include "components/saved_tab_groups/public/saved_tab_group.h"
  #include "components/saved_tab_groups/public/saved_tab_group_tab.h"
  #include "components/saved_tab_groups/public/tab_group_sync_service.h"
@@ -813,7 +799,7 @@
  #include "components/tab_groups/tab_group_id.h"
  #include "components/tabs/public/tab_group.h"
  #include "content/public/browser/navigation_handle.h"
-@@ -289,7 +288,6 @@
+@@ -289,7 +287,6 @@
    GetURLsAndFoldersForTabEntries(folder_data, tab_entries, groups_by_index);
  }
  
@@ -821,20 +807,12 @@
  // Open a folder of bookmarks as tabs.
  void DoOpen(BrowserWindowInterface* browser,
              std::vector<UrlAndId> url_and_ids_to_open,
-@@ -300,23 +298,20 @@
+@@ -300,23 +297,12 @@
              page_load_metrics::NavigationHandleUserData::InitiatorLocation
                  navigation_type,
              std::optional<BookmarkLaunchAction> launch_action) {
-+  if (add_to_split && url_and_ids_to_open.size() == 1 && browser) {
-+    if (auto* layout = nori::LayoutController::From(browser)) {
-+      layout->OpenWithPlacement(nori::Placement::kSplitRight, [&] {
-+        OpenAllHelper(browser, std::move(url_and_ids_to_open),
-+                      WindowOpenDisposition::NEW_FOREGROUND_TAB,
-+                      navigation_type, std::move(launch_action));
-+      });
-+      return;
-+    }
-+  }
++  if (add_to_split && url_and_ids_to_open.size() == 1)
++    initial_disposition = WindowOpenDisposition::NEW_SPLIT_VIEW;
    const auto opened_web_contents = OpenAllHelper(
        browser, std::move(url_and_ids_to_open), initial_disposition,
        navigation_type, std::move(launch_action));
@@ -856,7 +834,7 @@
      TabStripModel* model = browser->tab_strip_model();
  
      // Figure out which tabs we actually opened in this browser that
-@@ -475,7 +470,6 @@
+@@ -475,7 +461,6 @@
                             base::Unretained(profile)));
  }
  
@@ -864,7 +842,7 @@
  bool HasBookmarkURLs(
      const std::vector<raw_ptr<const BookmarkNode, VectorExperimental>>&
          selection) {
-@@ -526,7 +520,6 @@
+@@ -526,7 +511,6 @@
    }
  }
  
@@ -872,3 +850,120 @@
  std::u16string SuggestUniqueTabGroupName(
      std::u16string folder_title,
      const tab_groups::TabGroupSyncService* tab_group_sync_service) {
+--- a/chrome/browser/ui/navigator/BUILD.gn
++++ b/chrome/browser/ui/navigator/BUILD.gn
+@@ -91,8 +91,12 @@
+       "//chrome/browser/ui:status_bubble",
+       "//chrome/browser/ui/browser_ui_controller",
+       "//chrome/browser/ui/browser_window",
++      "//chrome/browser/ui/helium:helium_layout_state_controller",
+       "//chrome/browser/ui/location_bar",
++      "//chrome/browser/ui/nori:layout_controller",
+       "//chrome/browser/ui/tabs:tab_strip",
++      "//chrome/browser/ui/toasts",
++      "//chrome/browser/ui/toasts/api:toasts",
+       "//chrome/browser/ui/web_applications",
+       "//chrome/browser/ui/web_applications:launch_utils",
+       "//chrome/browser/ui/window_feature_controller",
+--- a/chrome/browser/ui/navigator/browser_navigator.cc
++++ b/chrome/browser/ui/navigator/browser_navigator.cc
+@@ -40,10 +40,10 @@
+ #include "chrome/browser/ui/location_bar/location_bar.h"
+ #include "chrome/browser/ui/navigator/browser_navigator_params.h"
+ #include "chrome/browser/ui/navigator/browser_navigator_params_utils.h"
++#include "chrome/browser/ui/nori/views/layout_controller.h"
+ #include "chrome/browser/ui/singleton_tabs.h"
+ #include "chrome/browser/ui/status_bubble.h"
+ #include "chrome/browser/ui/tab_helpers.h"
+-#include "chrome/browser/ui/tabs/split_tab_metrics.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
+ #include "chrome/browser/ui/toasts/api/toast_id.h"
+@@ -64,9 +64,6 @@
+ #include "components/no_state_prefetch/browser/no_state_prefetch_manager.h"
+ #include "components/policy/core/common/policy_pref_names.h"
+ #include "components/prefs/pref_service.h"
+-#include "components/split_tabs/split_tab_id.h"
+-#include "components/split_tabs/split_tab_visual_data.h"
+-#include "components/tabs/public/split_tab_data.h"
+ #include "components/tabs/public/tab_interface.h"
+ #include "content/public/browser/browser_url_handler.h"
+ #include "content/public/browser/navigation_entry.h"
+@@ -498,16 +495,11 @@
+       [[fallthrough]];
+     }
+     case WindowOpenDisposition::NEW_FOREGROUND_TAB:
++    case WindowOpenDisposition::NEW_SPLIT_VIEW:
+     case WindowOpenDisposition::SINGLETON_TAB:
+       params->tabstrip_add_types |= AddTabTypes::ADD_ACTIVE;
+       break;
+ 
+-    case WindowOpenDisposition::NEW_SPLIT_VIEW:
+-      // AddToNewSplit() pairs the new tab with the active tab, so the new
+-      // tab must not be active at insertion time.
+-      params->tabstrip_add_types &= ~AddTabTypes::ADD_ACTIVE;
+-      break;
+-
+     default:
+       break;
+   }
+@@ -1046,38 +1038,6 @@
+         std::move(tab_to_insert), params->tabstrip_index, params->transition,
+         params->tabstrip_add_types, group);
+     MaybeShowZenModeNewTabCreatedToast(*params);
+-
+-    // For NEW_SPLIT_VIEW, pair the new tab with the active tab. The
+-    // "already split" case is handled in
+-    // BrowserWebContentsDelegate::OpenURLFromTab().
+-    if (params->disposition == WindowOpenDisposition::NEW_SPLIT_VIEW &&
+-        contents_to_navigate_or_insert) {
+-      TabStripModel* const tab_strip_model =
+-          params->browser->GetTabStripModel();
+-      tabs::TabInterface* const new_tab =
+-          tabs::TabInterface::MaybeGetFromContents(
+-              contents_to_navigate_or_insert);
+-      const int new_tab_index = tab_strip_model->GetIndexOfTab(new_tab);
+-      tabs::TabInterface* const source_tab =
+-          params->source_contents ? tabs::TabInterface::MaybeGetFromContents(
+-                                        params->source_contents)
+-                                  : nullptr;
+-      if (new_tab_index != TabStripModel::kNoTab &&
+-          (!source_tab || !source_tab->IsSplit())) {
+-        tab_strip_model->AddToNewSplit(
+-            {new_tab_index}, split_tabs::SplitTabVisualData(),
+-            split_tabs::SplitTabCreatedSource::kLinkClick);
+-        // AddToNewSplit() makes the split contiguous and gives the new tab the
+-        // active tab's pinned state and group, moving the new tab next to the
+-        // active tab if it is not already there. In particular, when the
+-        // active tab is pinned, the new (unpinned) tab was inserted after the
+-        // pinned tabs, so after the move `new_tab_index` refers to whichever
+-        // tab was shifted into its old slot, e.g. the pinned tab to the right
+-        // of the split. Activate by tab rather than by index so that tab can
+-        // never be focused instead of the new split tab.
+-        tab_strip_model->ActivateTab(new_tab);
+-      }
+-    }
+   }
+ 
+   if (singleton_index >= 0) {
+@@ -1166,7 +1126,20 @@
+ }  // namespace internal
+ 
+ base::WeakPtr<content::NavigationHandle> Navigate(NavigateParams* params) {
++  CHECK(params);
+   AdditionalParams additional_params;
++  if (params->disposition == WindowOpenDisposition::NEW_SPLIT_VIEW) {
++    params->disposition = WindowOpenDisposition::NEW_FOREGROUND_TAB;
++    if (auto* layout = params->browser
++                           ? nori::LayoutController::From(params->browser)
++                           : nullptr) {
++      base::WeakPtr<content::NavigationHandle> handle;
++      layout->OpenWithPlacement(nori::Placement::kSplitRight, [&] {
++        handle = internal::NavigateImpl(params, additional_params);
++      });
++      return handle;
++    }
++  }
+   return internal::NavigateImpl(params, additional_params);
+ }
+ 
