@@ -31,6 +31,7 @@
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents.h"
+#include "ui/accessibility/ax_enums.mojom.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/models/menu_model.h"
 #include "ui/color/color_id.h"
@@ -87,11 +88,13 @@ class CommandRow : public views::Button {
     auto* key = AddChildView(std::make_unique<views::Label>(shortcut));
     key->SetEnabledColor(ui::kColorLabelForegroundSecondary);
     SetFocusBehavior(FocusBehavior::NEVER);
+    GetViewAccessibility().SetRole(ax::mojom::Role::kListBoxOption);
     GetViewAccessibility().SetName(name);
   }
 
   void Select(bool selected) {
     selected_ = selected;
+    GetViewAccessibility().SetIsSelected(selected);
     UpdateBackground();
   }
 
@@ -126,6 +129,9 @@ class CommandPalette : public views::View, public views::TextfieldController {
     input_ = AddChildView(std::make_unique<views::Textfield>());
     input_->SetPlaceholderText(u"Search tabs, commands, or the web");
     input_->GetViewAccessibility().SetName(u"Nori command palette");
+    input_->GetViewAccessibility().SetRole(
+        ax::mojom::Role::kTextFieldWithComboBox);
+    input_->GetViewAccessibility().SetIsExpanded();
     input_->SetFontList(gfx::FontList().DeriveWithSizeDelta(7));
     input_->SetBorder(views::CreateEmptyBorder(gfx::Insets::VH(12, 12)));
     input_->set_controller(this);
@@ -135,6 +141,8 @@ class CommandPalette : public views::View, public views::TextfieldController {
     scroll->SetHorizontalScrollBarMode(
         views::ScrollView::ScrollBarMode::kDisabled);
     results_ = scroll->SetContents(std::make_unique<views::View>());
+    results_->GetViewAccessibility().SetRole(ax::mojom::Role::kListBox);
+    results_->GetViewAccessibility().SetName(u"Results");
     auto* rows = results_->SetLayoutManager(std::make_unique<views::BoxLayout>(
         views::BoxLayout::Orientation::kVertical));
     rows->set_cross_axis_alignment(
@@ -251,6 +259,7 @@ class CommandPalette : public views::View, public views::TextfieldController {
   }
 
   void Filter() {
+    input_->GetViewAccessibility().ClearActiveDescendant();
     rows_.clear();
     results_->RemoveAllChildViews();
     matches_.clear();
@@ -305,8 +314,10 @@ class CommandPalette : public views::View, public views::TextfieldController {
   void Select() {
     for (size_t i = 0; i < rows_.size(); ++i)
       rows_[i]->Select(i == selected_);
-    if (!rows_.empty())
+    if (!rows_.empty()) {
       rows_[selected_]->ScrollViewToVisible();
+      input_->GetViewAccessibility().SetActiveDescendant(*rows_[selected_]);
+    }
   }
 
   void Run(size_t index) {
